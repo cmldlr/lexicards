@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Word, WordList } from './types';
 import { parseCSV, defaultCSVData, speakWord } from './utils';
 import StatsView from './components/StatsView';
@@ -129,6 +129,12 @@ export default function App() {
     localStorage.removeItem('lexicards_auth');
     setIsAuthenticated(false);
     setLoginPassword('');
+  };
+
+  const handleTabChange = (tab: 'collections' | 'study' | 'library' | 'import') => {
+    setIsStudying(false);
+    setInspectingListId(null);
+    setActiveTab(tab);
   };
 
   // Import Handler
@@ -675,7 +681,7 @@ export default function App() {
               {/* Responsive Desktop Top Tabs Switcher */}
               <div className="hidden md:flex items-center justify-center p-1 bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/40 dark:border-slate-800/80 rounded-2xl max-w-xl mx-auto mb-6">
                 <button
-                  onClick={() => setActiveTab('collections')}
+                  onClick={() => handleTabChange('collections')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'collections'
                       ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
@@ -686,7 +692,7 @@ export default function App() {
                   <span>Koleksiyonlar ({lists.length})</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('study')}
+                  onClick={() => handleTabChange('study')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'study'
                       ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
@@ -697,7 +703,7 @@ export default function App() {
                   <span>Çalışma Odası</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('library')}
+                  onClick={() => handleTabChange('library')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'library'
                       ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
@@ -708,7 +714,7 @@ export default function App() {
                   <span>Kütüphane ({words.length})</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('import')}
+                  onClick={() => handleTabChange('import')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'import'
                       ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
@@ -797,7 +803,7 @@ export default function App() {
                           <p className="text-xs text-slate-400 mt-1 max-w-sm">"İçe Aktar" sekmesinden hazır listeleri yükleyebilir veya hemen aşağıdan yeni bir koleksiyon oluşturabilirsiniz.</p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
+                        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                           {lists.map(list => {
                             const wordCount = words.filter(w => w.listId === list.id).length;
                             const learnedCount = words.filter(w => w.listId === list.id && w.learned).length;
@@ -822,10 +828,10 @@ export default function App() {
                               <div
                                 key={list.id}
                                 onClick={() => setInspectingListId(list.id)}
-                                className={`group relative p-2.5 pl-4 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-2 overflow-hidden hover:shadow-sm ${cardThemeClass}`}
+                                className={`group relative p-2 pl-3 rounded-xl border transition-all duration-200 cursor-pointer flex flex-col gap-1.5 overflow-hidden hover:shadow-sm ${cardThemeClass}`}
                               >
                                 {/* Vertical Accent Stripe */}
-                                <div className={`absolute left-0 inset-y-0 w-1.5 ${stripeColor}`} />
+                                <div className={`absolute left-0 inset-y-0 w-1 ${stripeColor}`} />
 
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center space-x-2 min-w-0">
@@ -835,7 +841,7 @@ export default function App() {
                                         e.stopPropagation(); // Prevent modal opening
                                         handleToggleListId(list.id);
                                       }}
-                                      className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+                                      className={`w-4.5 h-4.5 rounded-md border flex items-center justify-center transition-all shrink-0 cursor-pointer ${
                                         isSelected
                                           ? 'bg-indigo-600 border-indigo-600 text-white shadow-2xs'
                                           : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 hover:border-slate-400'
@@ -846,7 +852,7 @@ export default function App() {
                                     </button>
                                     
                                     <div className="text-left min-w-0">
-                                      <h3 className="font-display font-black text-xs sm:text-sm text-slate-800 dark:text-white tracking-tight truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                      <h3 className="font-display font-black text-[11px] sm:text-sm text-slate-800 dark:text-white tracking-tight truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                         {list.name}
                                       </h3>
                                       <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -863,7 +869,7 @@ export default function App() {
                                   </div>
 
                                   {/* Right side icon indication */}
-                                  <div className="flex items-center space-x-1 shrink-0">
+                                  <div className="hidden sm:flex items-center space-x-1 shrink-0">
                                     <span className="p-1 rounded-lg bg-slate-50 dark:bg-slate-850/60 border border-slate-100/50 dark:border-slate-800 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:scale-105 transition-all">
                                       <Layers className="w-3 h-3" />
                                     </span>
@@ -872,8 +878,8 @@ export default function App() {
 
                                 {/* Custom Elegant Horizontal Progress Bar */}
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center justify-between text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                    <span>Durum</span>
+                                  <div className="flex items-center justify-between text-[7px] sm:text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                    <span className="hidden sm:inline">Durum</span>
                                     <span className={progressPercent === 100 ? 'text-emerald-500' : 'text-slate-650 dark:text-slate-300'}>
                                       %{progressPercent} ({learnedCount}/{wordCount})
                                     </span>
@@ -1252,8 +1258,7 @@ export default function App() {
         {/* Collection Tab */}
         <button
           onClick={() => {
-            setIsStudying(false);
-            setActiveTab('collections');
+            handleTabChange('collections');
           }}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'collections'
@@ -1268,8 +1273,7 @@ export default function App() {
         {/* Study Tab */}
         <button
           onClick={() => {
-            setIsStudying(false);
-            setActiveTab('study');
+            handleTabChange('study');
           }}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'study'
@@ -1284,8 +1288,7 @@ export default function App() {
         {/* Library Tab */}
         <button
           onClick={() => {
-            setIsStudying(false);
-            setActiveTab('library');
+            handleTabChange('library');
           }}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'library'
@@ -1300,8 +1303,7 @@ export default function App() {
         {/* Import Tab */}
         <button
           onClick={() => {
-            setIsStudying(false);
-            setActiveTab('import');
+            handleTabChange('import');
           }}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'import'
@@ -1316,3 +1318,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
