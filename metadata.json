@@ -1,0 +1,6 @@
+{
+  "name": "LexiCards",
+  "description": "Excel/CSV listelerinizle çalışabileceğiniz, telaffuz destekli ve mobil uyumlu ingilizce kelime kartları uygulaması.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
