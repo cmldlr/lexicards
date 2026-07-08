@@ -499,7 +499,7 @@ export default function App() {
         </header>
 
         {/* Center Study Container */}
-        <div className="flex-1 flex flex-col justify-center items-center p-4 min-h-0 overflow-y-auto bg-slate-50/50 dark:bg-slate-950/20">
+        <div className="flex-1 flex flex-col justify-center items-center px-4 py-3 sm:p-4 min-h-0 overflow-y-auto bg-slate-50/50 dark:bg-slate-950/20">
           <AnimatePresence mode="wait">
             {isCompleted ? (
               /* ================= VIEW 3: SESSION COMPLETED CELEBRATION ================= */
@@ -567,24 +567,8 @@ export default function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="w-full flex flex-col items-center my-auto"
+                className="w-full flex flex-col items-center"
               >
-                {/* Mobile top progress bar (only for card view, quiz view has its own progress styling) */}
-                {studyType === 'card' && (
-                  <div className="w-full max-w-md px-2 mb-4 sm:hidden">
-                    <div className="flex justify-between text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-                      <span>Kart {currentIndex + 1} / {sessionWords.length}</span>
-                      <span>%{Math.round(((currentIndex) / sessionWords.length) * 100)}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-indigo-600 dark:bg-indigo-500 rounded-full transition-all duration-300"
-                        style={{ width: `${((currentIndex + 1) / sessionWords.length) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                )}
-
                 {sessionWords.length > 0 && (
                   studyType === 'quiz' ? (
                     <QuizView
@@ -603,6 +587,7 @@ export default function App() {
                   ) : (
                     <CardView
                       word={sessionWords[currentIndex]}
+                      sessionWords={sessionWords}
                       isFlipped={isFlipped}
                       onFlip={handleCardFlip}
                       onNext={handleNextCard}
@@ -942,172 +927,72 @@ export default function App() {
                        onResetLearned={handleResetLearned} 
                      />
 
-                     {/* Redesigned Premium & User Friendly Preferences Card */}
-                      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-xs space-y-6">
-                        
-                        {/* Compact Header */}
-                        <div className="flex items-center space-x-3 pb-4 border-b border-slate-100 dark:border-slate-850">
-                          <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-xl">
-                            <Settings className="w-5 h-5 stroke-[2.5px]" />
+                     {/* Compact Preferences Card */}
+                      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-xl">
+                              <Settings className="w-4.5 h-4.5 stroke-[2.5px]" />
+                            </div>
+                            <div>
+                              <h2 className="text-base font-display font-black text-slate-800 dark:text-slate-100 leading-tight">Çalışma</h2>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">{targetWordsCount} kelime hazır</span>
+                            </div>
                           </div>
-                          <div>
-                            <h2 className="text-base font-display font-black text-slate-800 dark:text-slate-100 leading-tight">Çalışma Tercihleri</h2>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold tracking-wider uppercase block mt-0.5">Seans Ayarları</span>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1.5 rounded-full">
+                            {selectedListIds.length} liste
                           </div>
                         </div>
 
-                        {/* Settings Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                          {/* Sıralama Modu */}
-                          <div className="space-y-2">
-                            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                              Sıralama Modu
-                            </label>
-                            <div className="grid grid-cols-2 gap-1.5 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button
-                                type="button"
-                                onClick={() => setStudyMode('sequential')}
-                                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                                  studyMode === 'sequential'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Sıralama</label>
+                            <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
+                              <button type="button" onClick={() => setStudyMode('sequential')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'sequential' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Sıralı
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setStudyMode('shuffled')}
-                                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                                  studyMode === 'shuffled'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
+                              <button type="button" onClick={() => setStudyMode('shuffled')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'shuffled' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Karışık
                               </button>
                             </div>
                           </div>
 
-                          {/* Kelime Filtresi */}
-                          <div className="space-y-2">
-                            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                              Kelime Durumu
-                            </label>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Durum</label>
                             <div className="grid grid-cols-3 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button
-                                type="button"
-                                onClick={() => setFilterMode('all')}
-                                className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
-                                  filterMode === 'all'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
+                              <button type="button" onClick={() => setFilterMode('all')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'all' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Tümü
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setFilterMode('unlearned')}
-                                className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
-                                  filterMode === 'unlearned'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                                title="Öğrenilmeyenler"
-                              >
-                                Çalışılacak
+                              <button type="button" onClick={() => setFilterMode('unlearned')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'unlearned' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                Yeni
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setFilterMode('learned')}
-                                className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
-                                  filterMode === 'learned'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
-                                Öğrenilen
+                              <button type="button" onClick={() => setFilterMode('learned')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'learned' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                Bilinen
                               </button>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Çalışma Türü ve Quiz Modu Seçenekleri */}
-                        <div className="pt-4 border-t border-slate-100 dark:border-slate-850 space-y-4">
-                          <div className="space-y-2">
-                            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                              Çalışma Türü
-                            </label>
-                            <div className="grid grid-cols-2 gap-1.5 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button
-                                type="button"
-                                onClick={() => setStudyType('card')}
-                                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
-                                  studyType === 'card'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
-                                Klasik Kartlar
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Tür</label>
+                            <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
+                              <button type="button" onClick={() => setStudyType('card')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'card' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                Kart
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setStudyType('quiz')}
-                                className={`py-2 px-3 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
-                                  studyType === 'quiz'
-                                    ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40'
-                                    : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                                }`}
-                              >
+                              <button type="button" onClick={() => setStudyType('quiz')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'quiz' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Quiz
                               </button>
                             </div>
                           </div>
 
-                          {/* Çoktan Seçmeli Detaylı Ayarları */}
                           {studyType === 'quiz' && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="p-4 bg-indigo-50/30 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/30 rounded-2xl space-y-3"
-                            >
-                              <div className="flex items-center space-x-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
-                                <label className="text-xs font-black text-indigo-950 dark:text-indigo-300 uppercase tracking-wider block">
-                                  Quiz modu
-                                </label>
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setQuizMode('syn-to-word')}
-                                  className={`p-3 rounded-xl text-xs font-bold transition-all border text-left flex flex-col justify-between cursor-pointer h-20 ${
-                                    quizMode === 'syn-to-word'
-                                      ? 'bg-white dark:bg-slate-800 border-indigo-400 text-indigo-600 dark:text-indigo-400 shadow-3xs'
-                                      : 'bg-white/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-550 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-750'
-                                  }`}
-                                >
-                                  <div>
-                                    <span className="font-extrabold text-[9px] uppercase tracking-wider block text-slate-400 dark:text-slate-500 leading-none">Mod A</span>
-                                    <span className="block mt-1 font-black text-slate-800 dark:text-slate-100 leading-tight">syn-word</span>
-                                  </div>
-                                  <span className="block text-[10px] text-slate-450 dark:text-slate-500 font-medium leading-none">syn sorulur</span>
+                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
+                              <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Quiz Modu</label>
+                              <div className="grid grid-cols-2 gap-1 bg-indigo-50/60 dark:bg-indigo-950/25 p-1 rounded-xl border border-indigo-100/70 dark:border-indigo-900/40">
+                                <button type="button" onClick={() => setQuizMode('syn-to-word')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'syn-to-word' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-indigo-200 dark:border-indigo-900/60' : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                  Syn → Word
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setQuizMode('word-to-syn')}
-                                  className={`p-3 rounded-xl text-xs font-bold transition-all border text-left flex flex-col justify-between cursor-pointer h-20 ${
-                                    quizMode === 'word-to-syn'
-                                      ? 'bg-white dark:bg-slate-800 border-indigo-400 text-indigo-600 dark:text-indigo-400 shadow-3xs'
-                                      : 'bg-white/50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 text-slate-550 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-750'
-                                  }`}
-                                >
-                                  <div>
-                                    <span className="font-extrabold text-[9px] uppercase tracking-wider block text-slate-400 dark:text-slate-500 leading-none">Mod B</span>
-                                    <span className="block mt-1 font-black text-slate-800 dark:text-slate-100 leading-tight">word-syn</span>
-                                  </div>
-                                  <span className="block text-[10px] text-slate-450 dark:text-slate-500 font-medium leading-none">word sorulur</span>
+                                <button type="button" onClick={() => setQuizMode('word-to-syn')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'word-to-syn' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-indigo-200 dark:border-indigo-900/60' : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                  Word → Syn
                                 </button>
                               </div>
                             </motion.div>
@@ -1115,32 +1000,18 @@ export default function App() {
                         </div>
 
                         {/* Koleksiyon Seçimi */}
-                        <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-850">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                            <label className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                              Çalışılacak Koleksiyonlar ({selectedListIds.length} Seçili)
+                        <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-850">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                              Koleksiyonlar
                             </label>
-                            
-                            <div className="flex items-center space-x-3 text-[10px] font-bold uppercase tracking-wider">
-                              <button
-                                type="button"
-                                onClick={handleSelectAllLists}
-                                className="text-indigo-650 dark:text-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"
-                              >
-                                Tümünü Seç
-                              </button>
-                              <span className="text-slate-200 dark:text-slate-800">|</span>
-                              <button
-                                type="button"
-                                onClick={handleClearListSelection}
-                                className="text-slate-450 hover:text-indigo-600 cursor-pointer transition-colors"
-                              >
-                                Temizle
-                              </button>
+                            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                              <button type="button" onClick={handleSelectAllLists} className="text-indigo-650 dark:text-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors">Tümü</button>
+                              <button type="button" onClick={handleClearListSelection} className="text-slate-450 hover:text-indigo-600 cursor-pointer transition-colors">Temizle</button>
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 max-h-[160px] overflow-y-auto p-2.5 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-850/60 rounded-2xl scrollbar-thin">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[116px] overflow-y-auto p-2 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-850/60 rounded-2xl scrollbar-thin">
                             {lists.map(list => {
                               const isSelected = selectedListIds.includes(list.id);
                               const listWordCount = words.filter(w => w.listId === list.id).length;
@@ -1149,7 +1020,7 @@ export default function App() {
                                   key={list.id}
                                   type="button"
                                   onClick={() => handleToggleListId(list.id)}
-                                  className={`flex items-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  className={`min-w-0 flex items-center gap-2 py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                                     isSelected
                                       ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 shadow-3xs'
                                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-750'
@@ -1160,8 +1031,8 @@ export default function App() {
                                   }`}>
                                     {isSelected && <CheckCircle2 className="w-2.5 h-2.5 stroke-[3px]" />}
                                   </div>
-                                  <span className="truncate max-w-[130px]">{list.name}</span>
-                                  <span className="text-[10px] font-medium opacity-50">({listWordCount})</span>
+                                  <span className="truncate flex-1 text-left">{list.name}</span>
+                                  <span className="text-[10px] font-medium opacity-50 shrink-0">{listWordCount}</span>
                                 </button>
                               );
                             })}
