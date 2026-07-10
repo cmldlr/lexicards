@@ -9,7 +9,8 @@ import {
   ChevronRight, 
   HelpCircle, 
   Info,
-  Sparkles
+  Sparkles,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -18,19 +19,22 @@ interface QuizViewProps {
   allWords: Word[];
   currentIndex: number;
   totalCount: number;
-  quizMode: 'syn-to-word' | 'word-to-syn';
+  quizMode: 'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word';
   answerState?: QuizAnswerState;
+  answerStates: Record<string, QuizAnswerState>;
   navDirection: 1 | -1;
+  pronunciationEnabled: boolean;
   onNext: () => void;
   onPrev: () => void;
+  onJumpToIndex: (index: number) => void;
   onSaveAnswer: (wordId: string, answer: QuizAnswerState) => void;
-  onSetStatus: (status: 'unmarked' | 'learned' | 'struggled') => void;
 }
 
 interface Choice {
   id: string;
   term: string;
   synonyms: string;
+  turkishMeanings: string[];
 }
 
 interface QuizAnswerState {
@@ -47,17 +51,86 @@ export default function QuizView({
   totalCount,
   quizMode,
   answerState,
+  answerStates,
   navDirection,
+  pronunciationEnabled,
   onNext,
   onPrev,
-  onSaveAnswer,
-  onSetStatus
+  onJumpToIndex,
+  onSaveAnswer
 }: QuizViewProps) {
   const [choices, setChoices] = useState<Choice[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null);
+  const activeWords = allWords.length > 0 ? allWords : [word];
+  const progressPercent = totalCount > 0 ? ((currentIndex + 1) / totalCount) * 100 : 0;
+  const quizStatusCounts = activeWords.reduce(
+    (acc, item) => {
+      const answer = answerStates[item.id];
+      if (!answer?.isAnswered) {
+        acc.unanswered += 1;
+      } else if (answer.isCorrect) {
+        acc.correct += 1;
+      } else {
+        acc.wrong += 1;
+      }
+      return acc;
+    },
+    { unanswered: 0, wrong: 0, correct: 0 }
+  );
+
+  const findNextQuizStatusIndex = (status: 'unanswered' | 'wrong' | 'correct') => {
+    if (activeWords.length === 0) return -1;
+
+    for (let offset = 1; offset <= activeWords.length; offset++) {
+      const nextIndex = (currentIndex + offset) % activeWords.length;
+      const answer = answerStates[activeWords[nextIndex].id];
+      const matchesStatus =
+        status === 'unanswered'
+          ? !answer?.isAnswered
+          : status === 'wrong'
+            ? !!answer?.isAnswered && !answer.isCorrect
+            : !!answer?.isAnswered && answer.isCorrect;
+
+      if (matchesStatus) return nextIndex;
+    }
+
+    return -1;
+  };
+
+  const handleJumpToQuizStatus = (status: 'unanswered' | 'wrong' | 'correct') => {
+    const nextIndex = findNextQuizStatusIndex(status);
+    if (nextIndex >= 0) {
+      onJumpToIndex(nextIndex);
+    }
+  };
+
+  const getTurkishChoiceText = (choice: Pick<Choice, 'turkishMeanings'>) => (
+    choice.turkishMeanings.length > 0 ? choice.turkishMeanings.join(', ') : 'Türkçe anlam yok'
+  );
+
+  const getChoiceText = (choice: Choice) => {
+    if (quizMode === 'syn-to-word' || quizMode === 'tr-to-word') return choice.term;
+    if (quizMode === 'word-to-syn') return choice.synonyms;
+    return getTurkishChoiceText(choice);
+  };
+
+  const shuffleItems = <T,>(items: T[]) => {
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  const getAnswerKey = (item: Word | Choice) => {
+    if (quizMode === 'word-to-tr') return getTurkishChoiceText(item).toLowerCase().trim();
+    if (quizMode === 'word-to-syn') return item.synonyms.toLowerCase().trim();
+    return item.term.toLowerCase().trim();
+  };
 
   // Re-generate choices when the active word changes
   useEffect(() => {
@@ -69,7 +142,7 @@ export default function QuizView({
       setIsAnswered(answerState.isAnswered);
       setIsCorrect(answerState.isCorrect);
 
-      if (quizMode === 'word-to-syn') {
+      if (pronunciationEnabled && (quizMode === 'word-to-syn' || quizMode === 'word-to-tr')) {
         speakWord(word.term);
       }
       return;
@@ -80,58 +153,42 @@ export default function QuizView({
     setIsAnswered(false);
     setIsCorrect(false);
 
-    // Filter out candidates with empty synonyms (especially for quiz mode)
-    const validDistractorPool = allWords.filter(
-      w => w.id !== word.id && w.term.toLowerCase() !== word.term.toLowerCase()
-    );
+    // Filter out candidates that cannot be used as answer options for the current mode
+    const validDistractorPool = allWords.filter(w => {
+      if (w.id === word.id || w.term.toLowerCase() === word.term.toLowerCase()) return false;
+      if (quizMode === 'word-to-tr' || quizMode === 'tr-to-word') return w.turkishMeanings.length > 0;
+      return true;
+    });
 
-    // Prioritize distractors from the same list for higher relevance, then use general pool
-    const sameListDistractors = validDistractorPool.filter(w => w.listId === word.listId);
-    const otherListDistractors = validDistractorPool.filter(w => w.listId !== word.listId);
-    
-    const combinedPool = [...sameListDistractors, ...otherListDistractors];
+    const randomizedPool = shuffleItems(validDistractorPool);
 
-    // Pick 3 unique distractors
+    // Pick 3 random distractors with unique visible answer texts
     const chosenDistractors: Word[] = [];
-    const usedTerms = new Set<string>([word.term.toLowerCase()]);
-    const usedSyns = new Set<string>([word.synonyms.toLowerCase().trim()]);
+    const usedAnswerKeys = new Set<string>([getAnswerKey(word)]);
 
-    for (const item of combinedPool) {
+    for (const item of randomizedPool) {
       if (chosenDistractors.length >= 3) break;
 
-      const normTerm = item.term.toLowerCase();
-      const normSyn = item.synonyms.toLowerCase().trim();
-
-      // Ensure distractors are not duplicate terms or duplicate synonyms
-      if (normSyn && !usedTerms.has(normTerm) && !usedSyns.has(normSyn)) {
+      const answerKey = getAnswerKey(item);
+      if (answerKey && !usedAnswerKeys.has(answerKey)) {
         chosenDistractors.push(item);
-        usedTerms.add(normTerm);
-        usedSyns.add(normSyn);
-      }
-    }
-
-    // Fallback if we couldn't find unique distractors with synonyms
-    if (chosenDistractors.length < 3) {
-      for (const item of combinedPool) {
-        if (chosenDistractors.length >= 3) break;
-        if (!chosenDistractors.some(d => d.id === item.id)) {
-          chosenDistractors.push(item);
-        }
+        usedAnswerKeys.add(answerKey);
       }
     }
 
     // Assemble the 4 choices (correct + 3 distractors)
     const rawChoices: Choice[] = [
-      { id: word.id, term: word.term, synonyms: word.synonyms },
+      { id: word.id, term: word.term, synonyms: word.synonyms, turkishMeanings: word.turkishMeanings },
       ...chosenDistractors.map(d => ({
         id: d.id,
         term: d.term,
-        synonyms: d.synonyms
+        synonyms: d.synonyms,
+        turkishMeanings: d.turkishMeanings
       }))
     ];
 
     // Shuffle the options
-    const shuffled = rawChoices.sort(() => Math.random() - 0.5);
+    const shuffled = shuffleItems(rawChoices);
     setChoices(shuffled);
     onSaveAnswer(word.id, {
       choices: shuffled,
@@ -140,11 +197,11 @@ export default function QuizView({
       isCorrect: false
     });
 
-    // Automatically speak the term if we are asking Word -> Synonym
-    if (quizMode === 'word-to-syn') {
+    // Automatically speak the term if the English word is the prompt
+    if (pronunciationEnabled && (quizMode === 'word-to-syn' || quizMode === 'word-to-tr')) {
       speakWord(word.term);
     }
-  }, [word.id, quizMode]);
+  }, [word.id, quizMode, pronunciationEnabled]);
 
   const handleSelectChoice = (choice: Choice) => {
     if (isAnswered) return;
@@ -171,18 +228,17 @@ export default function QuizView({
       isCorrect: correct
     });
 
-    // Save learning status automatically in real-time
     if (correct) {
-      onSetStatus('learned');
       // Speak term for confirmation & pronunciation reinforcement
-      speakWord(word.term);
-    } else {
-      onSetStatus('struggled');
+      if (pronunciationEnabled) {
+        speakWord(word.term);
+      }
     }
   };
 
   const handlePronounce = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!pronunciationEnabled) return;
     speakWord(word.term);
   };
 
@@ -206,7 +262,46 @@ export default function QuizView({
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto px-2 sm:px-0 overflow-hidden">
+    <div className="w-full max-w-lg mx-auto px-2 sm:px-0 overflow-hidden select-none" style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}>
+      <div className="w-full mb-3 space-y-2.5">
+        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <span>SORU {currentIndex + 1} / {totalCount}</span>
+          <span>İlerleme</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+          <div className="h-full bg-indigo-600 transition-all" style={{ width: `${progressPercent}%` }} />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => handleJumpToQuizStatus('unanswered')}
+            disabled={quizStatusCounts.unanswered === 0}
+            className="min-w-0 rounded-xl border border-indigo-500/20 bg-indigo-500/10 px-2 py-2 text-center disabled:opacity-35 disabled:cursor-default cursor-pointer"
+          >
+            <div className="text-[8px] font-black uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Cevapsız</div>
+            <div className="mt-0.5 text-sm font-display font-black text-indigo-600 dark:text-indigo-400">{quizStatusCounts.unanswered}<span className="mx-0.5 text-[10px] opacity-70">/</span><span className="text-xs">{activeWords.length}</span></div>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleJumpToQuizStatus('wrong')}
+            disabled={quizStatusCounts.wrong === 0}
+            className="min-w-0 rounded-xl border border-rose-500/20 bg-rose-500/10 px-2 py-2 text-center disabled:opacity-35 disabled:cursor-default cursor-pointer"
+          >
+            <div className="text-[8px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">Yanlış</div>
+            <div className="mt-0.5 text-sm font-display font-black text-rose-600 dark:text-rose-400">{quizStatusCounts.wrong}<span className="mx-0.5 text-[10px] opacity-70">/</span><span className="text-xs">{activeWords.length}</span></div>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleJumpToQuizStatus('correct')}
+            disabled={quizStatusCounts.correct === 0}
+            className="min-w-0 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-2 py-2 text-center disabled:opacity-35 disabled:cursor-default cursor-pointer"
+          >
+            <div className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Doğru</div>
+            <div className="mt-0.5 text-sm font-display font-black text-emerald-600 dark:text-emerald-400">{quizStatusCounts.correct}<span className="mx-0.5 text-[10px] opacity-70">/</span><span className="text-xs">{activeWords.length}</span></div>
+          </button>
+        </div>
+      </div>
+
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={word.id}
@@ -257,7 +352,7 @@ export default function QuizView({
           <div className="flex items-center space-x-1.5 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100/40 dark:border-indigo-900/30 px-2.5 py-1 rounded-xl">
             <HelpCircle className="w-3.5 h-3.5 text-indigo-500" />
             <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-              {quizMode === 'syn-to-word' ? 'syn-word' : 'word-syn'}
+              {quizMode === 'syn-to-word' ? 'syn-word' : quizMode === 'word-to-syn' ? 'word-syn' : quizMode === 'word-to-tr' ? 'word-tr' : 'tr-word'}
             </span>
           </div>
           <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950 px-2.5 py-1 rounded-lg">
@@ -268,9 +363,13 @@ export default function QuizView({
         {/* Question Area */}
         <div className="text-center py-4 px-2 bg-slate-50/30 dark:bg-slate-950/20 border border-slate-100/60 dark:border-slate-850 rounded-2xl mb-6">
           <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-widest block mb-2">
-            {quizMode === 'syn-to-word' 
-              ? 'syn verildi, kelimeyi seç:' 
-              : 'kelime verildi, syn seç:'
+            {quizMode === 'syn-to-word'
+              ? 'syn verildi, kelimeyi seç:'
+              : quizMode === 'word-to-syn'
+                ? 'kelime verildi, syn seç:'
+                : quizMode === 'word-to-tr'
+                  ? 'kelime verildi, Türkçe anlamı seç:'
+                  : 'Türkçe anlam verildi, kelimeyi seç:'
             }
           </span>
 
@@ -278,6 +377,12 @@ export default function QuizView({
             <div className="space-y-2">
               <h1 className="text-xl sm:text-2xl font-serif italic font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words">
                 "{word.synonyms}"
+              </h1>
+            </div>
+          ) : quizMode === 'tr-to-word' ? (
+            <div className="space-y-2">
+              <h1 className="text-xl sm:text-2xl font-display font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words">
+                {word.turkishMeanings.join(', ')}
               </h1>
             </div>
           ) : (
@@ -288,15 +393,20 @@ export default function QuizView({
                 </h1>
                 <button
                   onClick={handlePronounce}
-                  className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-indigo-400 rounded-full transition-all active:scale-95 cursor-pointer"
-                  title="Sesli Telaffuz"
+                  disabled={!pronunciationEnabled}
+                  className={`p-1.5 rounded-full transition-all active:scale-95 ${
+                    pronunciationEnabled
+                      ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-indigo-400 cursor-pointer'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed'
+                  }`}
+                  title={pronunciationEnabled ? 'Sesli Telaffuz' : 'Telaffuz kapalı'}
                 >
-                  <Volume2 className="w-4 h-4" />
+                  {pronunciationEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                 </button>
               </div>
               
               {/* Extra visual hint: Turkish meanings shown as a tiny helper badge after answered */}
-              {isAnswered && (
+              {isAnswered && quizMode !== 'word-to-tr' && (
                 <motion.div 
                   initial={{ opacity: 0, y: 5 }} 
                   animate={{ opacity: 1, y: 0 }}
@@ -350,8 +460,8 @@ export default function QuizView({
               >
                 <div className="flex items-center space-x-3 min-w-0 pr-2">
                   {iconElement}
-                  <span className="truncate">
-                    {quizMode === 'syn-to-word' ? choice.term : choice.synonyms}
+                  <span className="min-w-0 whitespace-normal break-words leading-snug">
+                    {getChoiceText(choice)}
                   </span>
                 </div>
                 
@@ -359,7 +469,7 @@ export default function QuizView({
                 {isAnswered && isCorrectAnswer && quizMode === 'word-to-syn' && (
                   <span className="text-[9px] font-mono font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded">DOĞRU</span>
                 )}
-                {isAnswered && isCorrectAnswer && quizMode === 'syn-to-word' && (
+                {isAnswered && isCorrectAnswer && quizMode !== 'word-to-syn' && (
                   <span className="text-[9px] font-mono font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded">DOĞRU</span>
                 )}
               </button>
@@ -391,14 +501,18 @@ export default function QuizView({
                     {isCorrect ? 'Tebrikler! Doğru Cevap' : 'Yanlış Cevap! Doğrusu:'}
                   </p>
                   <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-350 font-bold leading-normal">
-                    {quizMode === 'syn-to-word' ? (
+                    {quizMode === 'syn-to-word' || quizMode === 'tr-to-word' ? (
                       <span>
                         <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong>
-                        {word.turkishMeanings.length > 0 && ` (${word.turkishMeanings[0]})`}
+                        {word.turkishMeanings.length > 0 && ` (${word.turkishMeanings.join(', ')})`}
+                      </span>
+                    ) : quizMode === 'word-to-syn' ? (
+                      <span>
+                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong> eş anlamlıları: <em className="text-slate-500 font-medium">"{word.synonyms}"</em>
                       </span>
                     ) : (
                       <span>
-                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong> eş anlamlıları: <em className="text-slate-500 font-medium">"{word.synonyms}"</em>
+                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong>: <em className="text-slate-500 font-medium">{word.turkishMeanings.join(', ')}</em>
                       </span>
                     )}
                   </p>

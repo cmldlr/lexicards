@@ -27,7 +27,9 @@ import {
   GraduationCap,
   Sparkle,
   Lock,
-  LogOut
+  LogOut,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,6 +37,7 @@ interface QuizChoiceSnapshot {
   id: string;
   term: string;
   synonyms: string;
+  turkishMeanings: string[];
 }
 
 interface QuizAnswerSnapshot {
@@ -60,7 +63,7 @@ export default function App() {
   const [studyMode, setStudyMode] = useState<'sequential' | 'shuffled'>('sequential');
   const [filterMode, setFilterMode] = useState<'all' | 'unlearned' | 'learned'>('all');
   const [studyType, setStudyType] = useState<'card' | 'quiz'>('card');
-  const [quizMode, setQuizMode] = useState<'syn-to-word' | 'word-to-syn'>('syn-to-word');
+  const [quizMode, setQuizMode] = useState<'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word'>('syn-to-word');
   
   // Active study states
   const [isStudying, setIsStudying] = useState(false);
@@ -68,6 +71,7 @@ export default function App() {
   const [sessionWords, setSessionWords] = useState<Word[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(true);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerSnapshot>>({});
   const [quizNavDirection, setQuizNavDirection] = useState<1 | -1>(1);
 
@@ -271,18 +275,43 @@ export default function App() {
       });
     }
 
-    // Filter by synonyms existence if in quiz mode
+    // Filter by quiz mode requirements
     if (studyType === 'quiz') {
-      candidates = candidates.filter(w => w.synonyms && w.synonyms.trim() !== '');
+      if (quizMode === 'word-to-tr' || quizMode === 'tr-to-word') {
+        candidates = candidates.filter(w => w.turkishMeanings.length > 0);
+      } else {
+        candidates = candidates.filter(w => w.synonyms && w.synonyms.trim() !== '');
+      }
     }
 
     if (candidates.length === 0) {
       if (studyType === 'quiz') {
-        alert('Seçilen kriterlerde eş anlamlısı (syn) olan çalışılacak kelime kalmadı! Lütfen farklı bir liste seçin veya kelime ekleyin.');
+        alert(quizMode === 'word-to-tr' || quizMode === 'tr-to-word'
+          ? 'Seçilen kriterlerde Türkçe anlamı olan çalışılacak kelime kalmadı! Lütfen farklı bir liste seçin veya kelime ekleyin.'
+          : 'Seçilen kriterlerde eş anlamlısı (syn) olan çalışılacak kelime kalmadı! Lütfen farklı bir liste seçin veya kelime ekleyin.'
+        );
       } else {
         alert('Seçilen kriterlerde çalışılacak kelime kalmadı! Tüm kelimeler öğrenildi olarak işaretlenmiş olabilir.');
       }
       return;
+    }
+
+    if (studyType === 'quiz' && candidates.length < 4) {
+      alert('Quiz için en az 4 uygun kelime gerekir. Lütfen daha fazla kelime içeren bir liste veya daha geniş bir filtre seçin.');
+      return;
+    }
+
+    if (studyType === 'quiz' && (quizMode === 'word-to-tr' || quizMode === 'tr-to-word')) {
+      const uniqueAnswerCount = new Set(candidates.map(w => (
+        quizMode === 'word-to-tr'
+          ? w.turkishMeanings.join(', ').toLowerCase().trim()
+          : w.term.toLowerCase().trim()
+      ))).size;
+
+      if (uniqueAnswerCount < 4) {
+        alert('Bu mod için en az 4 benzersiz cevap şıkkı gerekir. Lütfen daha fazla farklı kelime içeren bir liste seçin.');
+        return;
+      }
     }
 
     // Sort or shuffle candidates
@@ -298,9 +327,9 @@ export default function App() {
     setIsStudying(true);
     setIsCompleted(false);
 
-    // Pronounce first word (only if in card mode or word-to-syn quiz mode)
+    // Pronounce first word (only if the English word is the prompt)
     if (candidates.length > 0) {
-      if (studyType === 'card' || quizMode === 'word-to-syn') {
+      if (isPronunciationEnabled && (studyType === 'card' || quizMode === 'word-to-syn' || quizMode === 'word-to-tr')) {
         setTimeout(() => speakWord(candidates[0].term), 300);
       }
     }
@@ -314,8 +343,8 @@ export default function App() {
       if (currentIndex < sessionWords.length - 1) {
         const nextIdx = currentIndex + 1;
         setCurrentIndex(nextIdx);
-        // Auto-pronounce next term (only if in card mode or word-to-syn quiz mode)
-        if (studyType === 'card' || quizMode === 'word-to-syn') {
+        // Auto-pronounce next term when the English word is the prompt
+        if (isPronunciationEnabled && (studyType === 'card' || quizMode === 'word-to-syn' || quizMode === 'word-to-tr')) {
           speakWord(sessionWords[nextIdx].term);
         }
       } else {
@@ -332,8 +361,8 @@ export default function App() {
       if (currentIndex > 0) {
         const prevIdx = currentIndex - 1;
         setCurrentIndex(prevIdx);
-        // Auto-pronounce previous term (only if in card mode or word-to-syn quiz mode)
-        if (studyType === 'card' || quizMode === 'word-to-syn') {
+        // Auto-pronounce previous term when the English word is the prompt
+        if (isPronunciationEnabled && (studyType === 'card' || quizMode === 'word-to-syn' || quizMode === 'word-to-tr')) {
           speakWord(sessionWords[prevIdx].term);
         }
       }
@@ -364,6 +393,12 @@ export default function App() {
     }));
   };
 
+  const handleJumpToQuizIndex = (index: number) => {
+    if (index < 0 || index >= sessionWords.length || index === currentIndex) return;
+    setQuizNavDirection(index > currentIndex ? 1 : -1);
+    setCurrentIndex(index);
+  };
+
   // Calculation of words belonging to chosen checklists
   const targetWordsCount = words.filter(w => {
     const listMatch = selectedListIds.includes(w.listId);
@@ -377,6 +412,9 @@ export default function App() {
     }
 
     if (studyType === 'quiz') {
+      if (quizMode === 'word-to-tr' || quizMode === 'tr-to-word') {
+        return w.turkishMeanings.length > 0;
+      }
       return !!(w.synonyms && w.synonyms.trim() !== '');
     }
     return true;
@@ -393,6 +431,28 @@ export default function App() {
 
   // Get inspecting list object if active
   const activeInspectingList = lists.find(l => l.id === inspectingListId);
+  const completedQuizStats = sessionWords.reduce(
+    (acc, word) => {
+      const answer = quizAnswers[word.id];
+      if (!answer?.isAnswered) {
+        acc.unanswered += 1;
+      } else if (answer.isCorrect) {
+        acc.correct += 1;
+      } else {
+        acc.wrong += 1;
+      }
+      return acc;
+    },
+    { correct: 0, wrong: 0, unanswered: 0 }
+  );
+  const completedQuizSuccessRate = sessionWords.length > 0
+    ? Math.round((completedQuizStats.correct / sessionWords.length) * 100)
+    : 0;
+  const completedCardLearnedRate = sessionWords.length > 0
+    ? Math.round((sessionWords.filter(w => w.status === 'learned' || w.learned).length / sessionWords.length) * 100)
+    : 0;
+  const completedSuccessRate = studyType === 'quiz' ? completedQuizSuccessRate : completedCardLearnedRate;
+  const isLowCompletedSuccess = completedSuccessRate < 60;
 
   if (!isAuthenticated) {
     return (
@@ -489,12 +549,33 @@ export default function App() {
             </div>
           )}
 
-          <div className="flex items-center space-x-2 text-[10px] text-slate-450 dark:text-slate-450 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 border border-slate-150/50 dark:border-slate-850 px-3 py-1.5 rounded-full">
-            <span>{studyType === 'quiz' ? `Quiz: ${quizMode === 'syn-to-word' ? 'syn-word' : 'word-syn'}` : 'Kart'}</span>
-            <span className="text-slate-200 dark:text-slate-800">•</span>
-            <span>{studyMode === 'shuffled' ? 'Karışık' : 'Sıralı'}</span>
-            <span className="text-slate-200 dark:text-slate-800">•</span>
-            <span>{filterMode === 'unlearned' ? 'Yeni' : filterMode === 'learned' ? 'Bilinen' : 'Tümü'}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (isPronunciationEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                  window.speechSynthesis.cancel();
+                }
+                setIsPronunciationEnabled(!isPronunciationEnabled);
+              }}
+              className={`h-8 w-8 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
+                isPronunciationEnabled
+                  ? 'bg-indigo-50 text-indigo-600 border-indigo-100 dark:bg-indigo-950/35 dark:text-indigo-400 dark:border-indigo-900/50'
+                  : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-900 dark:text-slate-500 dark:border-slate-800'
+              }`}
+              title={isPronunciationEnabled ? 'Telaffuzu kapat' : 'Telaffuzu aç'}
+              aria-label={isPronunciationEnabled ? 'Telaffuzu kapat' : 'Telaffuzu aç'}
+            >
+              {isPronunciationEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
+            <div className="flex items-center space-x-2 text-[10px] text-slate-450 dark:text-slate-450 font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950 border border-slate-150/50 dark:border-slate-850 px-3 py-1.5 rounded-full">
+              <span>{studyType === 'quiz' ? `Quiz: ${quizMode === 'syn-to-word' ? 'syn-word' : quizMode === 'word-to-syn' ? 'word-syn' : quizMode === 'word-to-tr' ? 'word-tr' : 'tr-word'}` : 'Kart'}</span>
+              <span className="text-slate-200 dark:text-slate-800">•</span>
+              <span>{studyMode === 'shuffled' ? 'Karışık' : 'Sıralı'}</span>
+              <span className="text-slate-200 dark:text-slate-800">•</span>
+              <span>{filterMode === 'unlearned' ? 'Öğrenilmeyen' : filterMode === 'learned' ? 'Öğrenilen' : 'Tümü'}</span>
+            </div>
           </div>
         </header>
 
@@ -513,36 +594,62 @@ export default function App() {
                 {/* Top accent border */}
                 <div className="absolute top-0 inset-x-0 h-1.5 bg-indigo-600"></div>
 
-                <div className="p-4 bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 rounded-2xl w-16 h-16 flex items-center justify-center mx-auto shadow-xs">
-                  <Award className="w-10 h-10 animate-bounce" />
+                <div className={`p-4 rounded-2xl w-16 h-16 flex items-center justify-center mx-auto shadow-xs ${
+                  isLowCompletedSuccess
+                    ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400'
+                    : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400'
+                }`}>
+                  <Award className={`w-10 h-10 ${isLowCompletedSuccess ? '' : 'animate-bounce'}`} />
                 </div>
 
                 <div className="space-y-2">
                   <h2 className="text-xl font-display font-bold text-slate-800 dark:text-white flex items-center justify-center space-x-1.5">
-                    <span>Tebrikler!</span>
-                    <Sparkles className="w-5 h-5 text-indigo-500" />
+                    <span>{isLowCompletedSuccess ? 'Tekrar Etmek Gerekli' : 'Tebrikler!'}</span>
+                    {!isLowCompletedSuccess && <Sparkles className="w-5 h-5 text-indigo-500" />}
                   </h2>
                   <p className="text-xs text-slate-405 dark:text-slate-400 leading-relaxed font-semibold uppercase tracking-wider">
-                    Harika bir seans bitirdiniz!
+                    {isLowCompletedSuccess ? 'Bu seans biraz zor geçmiş.' : 'Harika bir seans bitirdiniz!'}
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Çalışma listenizdeki tüm kelimeleri baştan sona başarıyla incelediniz!
+                    {isLowCompletedSuccess
+                      ? 'Yanlış veya eksik kalan kelimeleri tekrar çalışarak oranı yükseltebilirsiniz.'
+                      : 'Çalışma listenizdeki tüm kelimeleri baştan sona başarıyla incelediniz!'
+                    }
                   </p>
                 </div>
 
                 {/* Mini statistics summary */}
-                <div className="bg-slate-50/50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 gap-4 text-left">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Çalışılan</span>
-                    <span className="text-lg font-display font-bold text-slate-800 dark:text-slate-100">{sessionWords.length} Kelime</span>
+                {studyType === 'quiz' ? (
+                  <div className="bg-slate-50/50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 gap-4 text-left">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Doğru</span>
+                      <span className="text-lg font-display font-bold text-emerald-600 dark:text-emerald-400">{completedQuizStats.correct}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Yanlış</span>
+                      <span className="text-lg font-display font-bold text-rose-600 dark:text-rose-400">{completedQuizStats.wrong}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cevapsız</span>
+                      <span className="text-lg font-display font-bold text-slate-700 dark:text-slate-200">{completedQuizStats.unanswered}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Başarı Oranı</span>
+                      <span className="text-lg font-display font-bold text-indigo-600 dark:text-indigo-400">%{completedQuizSuccessRate}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Öğrenilen Oranı</span>
-                    <span className="text-lg font-display font-bold text-indigo-600 dark:text-indigo-400">
-                      %{Math.round((sessionWords.filter(w => w.status === 'learned' || w.learned).length / sessionWords.length) * 100) || 0}
-                    </span>
+                ) : (
+                  <div className="bg-slate-50/50 dark:bg-slate-950 border border-slate-100 dark:border-slate-850 p-4 rounded-2xl grid grid-cols-2 gap-4 text-left">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Çalışılan</span>
+                      <span className="text-lg font-display font-bold text-slate-800 dark:text-slate-100">{sessionWords.length} Kelime</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Öğrenilen Oranı</span>
+                      <span className="text-lg font-display font-bold text-indigo-600 dark:text-indigo-400">%{completedCardLearnedRate}</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex flex-col space-y-3 pt-4">
                   <button
@@ -573,16 +680,18 @@ export default function App() {
                   studyType === 'quiz' ? (
                     <QuizView
                       word={sessionWords[currentIndex]}
-                      allWords={words}
+                      allWords={sessionWords}
                       currentIndex={currentIndex}
                       totalCount={sessionWords.length}
                       quizMode={quizMode}
+                      pronunciationEnabled={isPronunciationEnabled}
                       answerState={quizAnswers[sessionWords[currentIndex].id]}
+                      answerStates={quizAnswers}
                       navDirection={quizNavDirection}
                       onNext={handleNextCard}
                       onPrev={handlePrevCard}
+                      onJumpToIndex={handleJumpToQuizIndex}
                       onSaveAnswer={handleSaveQuizAnswer}
-                      onSetStatus={handleSetStatusOnActiveWord}
                     />
                   ) : (
                     <CardView
@@ -595,6 +704,7 @@ export default function App() {
                       onSetStatus={handleSetStatusOnActiveWord}
                       currentIndex={currentIndex}
                       totalCount={sessionWords.length}
+                      pronunciationEnabled={isPronunciationEnabled}
                     />
                   )
                 )}
@@ -659,7 +769,7 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 md:py-8 pb-24 md:pb-12">
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-4 py-6 md:py-8 md:pb-12 ${activeTab === 'study' ? 'pb-36' : 'pb-24'}`}>
         
         {/* ================= VIEW 1: TABBED WEB APPLICATION INTERFACE ================= */}
         <div className="space-y-6">
@@ -918,7 +1028,7 @@ export default function App() {
                      animate={{ opacity: 1, y: 0 }}
                      exit={{ opacity: 0, y: -10 }}
                      transition={{ duration: 0.15 }}
-                     className="space-y-6"
+                     className="space-y-3 sm:space-y-6"
                   >
                      {/* Stat Bento Box Row */}
                      <StatsView 
@@ -928,71 +1038,77 @@ export default function App() {
                      />
 
                      {/* Compact Preferences Card */}
-                      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-4 sm:p-5 shadow-xs space-y-4">
+                      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-2xl p-3 sm:p-5 shadow-xs space-y-2.5 sm:space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center space-x-2.5">
-                            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-xl">
-                              <Settings className="w-4.5 h-4.5 stroke-[2.5px]" />
+                            <div className="p-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-650 dark:text-indigo-400 rounded-lg">
+                              <Settings className="w-4 h-4 stroke-[2.5px]" />
                             </div>
                             <div>
                               <h2 className="text-base font-display font-black text-slate-800 dark:text-slate-100 leading-tight">Çalışma</h2>
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">{targetWordsCount} kelime hazır</span>
                             </div>
                           </div>
-                          <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1.5 rounded-full">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1 rounded-full">
                             {selectedListIds.length} liste
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Sıralama</label>
-                            <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button type="button" onClick={() => setStudyMode('sequential')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'sequential' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                        <div className="space-y-1.5 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0">
+                          <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2">
+                            <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sıralama</label>
+                            <div className="grid grid-cols-2 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
+                              <button type="button" onClick={() => setStudyMode('sequential')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'sequential' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Sıralı
                               </button>
-                              <button type="button" onClick={() => setStudyMode('shuffled')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'shuffled' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                              <button type="button" onClick={() => setStudyMode('shuffled')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'shuffled' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Karışık
                               </button>
                             </div>
                           </div>
 
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Durum</label>
-                            <div className="grid grid-cols-3 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button type="button" onClick={() => setFilterMode('all')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'all' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                          <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2 sm:col-span-2">
+                            <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Durum</label>
+                            <div className="grid grid-cols-3 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
+                              <button type="button" onClick={() => setFilterMode('all')} className={`py-1.5 px-1 rounded-md text-[11px] sm:text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'all' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Tümü
                               </button>
-                              <button type="button" onClick={() => setFilterMode('unlearned')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'unlearned' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
-                                Yeni
+                              <button type="button" onClick={() => setFilterMode('unlearned')} className={`py-1.5 px-1 rounded-md text-[10px] sm:text-xs font-extrabold transition-all cursor-pointer text-center leading-tight ${filterMode === 'unlearned' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                Öğrenilmeyen
                               </button>
-                              <button type="button" onClick={() => setFilterMode('learned')} className={`py-2 px-1 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${filterMode === 'learned' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-750/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
-                                Bilinen
+                              <button type="button" onClick={() => setFilterMode('learned')} className={`py-1.5 px-1 rounded-md text-[10px] sm:text-xs font-extrabold transition-all cursor-pointer text-center leading-tight ${filterMode === 'learned' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                Öğrenilen
                               </button>
                             </div>
                           </div>
 
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Tür</label>
-                            <div className="grid grid-cols-2 gap-1 bg-slate-50 dark:bg-slate-950 p-1 rounded-xl border border-slate-100 dark:border-slate-850">
-                              <button type="button" onClick={() => setStudyType('card')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'card' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                          <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2">
+                            <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tür</label>
+                            <div className="grid grid-cols-2 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
+                              <button type="button" onClick={() => setStudyType('card')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'card' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Kart
                               </button>
-                              <button type="button" onClick={() => setStudyType('quiz')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'quiz' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-slate-150/40 dark:border-slate-700/40' : 'text-slate-450 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                              <button type="button" onClick={() => setStudyType('quiz')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'quiz' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Quiz
                               </button>
                             </div>
                           </div>
 
                           {studyType === 'quiz' && (
-                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
-                              <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Quiz Modu</label>
-                              <div className="grid grid-cols-2 gap-1 bg-indigo-50/60 dark:bg-indigo-950/25 p-1 rounded-xl border border-indigo-100/70 dark:border-indigo-900/40">
-                                <button type="button" onClick={() => setQuizMode('syn-to-word')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'syn-to-word' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-indigo-200 dark:border-indigo-900/60' : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2 rounded-xl border border-indigo-100/70 dark:border-indigo-900/40 bg-indigo-50/35 dark:bg-indigo-950/15 p-1.5 sm:p-2 sm:col-span-2">
+                              <label className="w-20 shrink-0 pt-2 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Quiz Modu</label>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-indigo-100/70 dark:border-indigo-900/40 flex-1">
+                                <button type="button" onClick={() => setQuizMode('syn-to-word')} className={`py-1.5 px-1.5 rounded-md text-[11px] sm:text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'syn-to-word' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                   Syn → Word
                                 </button>
-                                <button type="button" onClick={() => setQuizMode('word-to-syn')} className={`py-2 px-2 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'word-to-syn' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-3xs border border-indigo-200 dark:border-indigo-900/60' : 'text-slate-500 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                <button type="button" onClick={() => setQuizMode('word-to-syn')} className={`py-1.5 px-1.5 rounded-md text-[11px] sm:text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'word-to-syn' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                   Word → Syn
+                                </button>
+                                <button type="button" onClick={() => setQuizMode('word-to-tr')} className={`py-1.5 px-1.5 rounded-md text-[11px] sm:text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'word-to-tr' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                  Word → TR
+                                </button>
+                                <button type="button" onClick={() => setQuizMode('tr-to-word')} className={`py-1.5 px-1.5 rounded-md text-[11px] sm:text-xs font-extrabold transition-all cursor-pointer text-center ${quizMode === 'tr-to-word' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
+                                  TR → Word
                                 </button>
                               </div>
                             </motion.div>
@@ -1000,7 +1116,7 @@ export default function App() {
                         </div>
 
                         {/* Koleksiyon Seçimi */}
-                        <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-850">
+                        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
                           <div className="flex items-center justify-between gap-2">
                             <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                               Koleksiyonlar
@@ -1011,7 +1127,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[116px] overflow-y-auto p-2 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-850/60 rounded-2xl scrollbar-thin">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 max-h-[104px] sm:max-h-[116px] overflow-y-auto p-1.5 sm:p-2 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-850/60 rounded-2xl scrollbar-thin">
                             {lists.map(list => {
                               const isSelected = selectedListIds.includes(list.id);
                               const listWordCount = words.filter(w => w.listId === list.id).length;
@@ -1020,7 +1136,7 @@ export default function App() {
                                   key={list.id}
                                   type="button"
                                   onClick={() => handleToggleListId(list.id)}
-                                  className={`min-w-0 flex items-center gap-2 py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  className={`min-w-0 flex items-center gap-2 py-1.5 sm:py-2 px-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                                     isSelected
                                       ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900/50 text-indigo-600 dark:text-indigo-400 shadow-3xs'
                                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-750'
@@ -1039,24 +1155,17 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Start Study Action Panel */}
-                        <div className="pt-4 border-t border-slate-100 dark:border-slate-850 flex flex-col sm:flex-row items-center justify-between gap-4">
-                          <div className="text-center sm:text-left">
+                        {/* Start Study Action */}
+                        <div className="hidden sm:flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-850">
+                          <div className="hidden sm:block flex-1">
                             {selectedListIds.length === 0 ? (
-                              <p className="text-xs text-rose-500 font-extrabold bg-rose-50 dark:bg-rose-950/20 px-3 py-1.5 rounded-xl border border-rose-100 dark:border-rose-900/40">
-                                Lütfen en az bir koleksiyon seçin!
-                              </p>
+                              <p className="text-xs text-rose-500 font-extrabold">Lütfen en az bir koleksiyon seçin.</p>
                             ) : targetWordsCount === 0 ? (
-                              <p className="text-xs text-amber-600 dark:text-amber-400 font-extrabold bg-amber-50 dark:bg-amber-950/20 px-3 py-1.5 rounded-xl border border-amber-100 dark:border-amber-900/40">
-                                Seçilen filtreye uygun kelime bulunamadı!
-                              </p>
+                              <p className="text-xs text-amber-600 dark:text-amber-400 font-extrabold">Seçilen filtreye uygun kelime bulunamadı.</p>
                             ) : (
-                              <div className="space-y-0.5">
-                                <p className="text-xs text-slate-450 dark:text-slate-400 font-bold uppercase tracking-wider">Seans Özeti</p>
-                                <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">
-                                  Toplam <span className="font-black text-indigo-600 dark:text-indigo-400">{targetWordsCount}</span> kelime seansa hazır.
-                                </p>
-                              </div>
+                              <p className="text-sm text-slate-700 dark:text-slate-200 font-medium">
+                                Toplam <span className="font-black text-indigo-600 dark:text-indigo-400">{targetWordsCount}</span> kelime hazır.
+                              </p>
                             )}
                           </div>
 
@@ -1064,10 +1173,10 @@ export default function App() {
                             type="button"
                             onClick={handleStartStudy}
                             disabled={selectedListIds.length === 0 || targetWordsCount === 0}
-                            className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-display font-black uppercase tracking-wider py-3.5 px-7 rounded-2xl shadow-md transition-all cursor-pointer text-xs disabled:cursor-not-allowed hover:scale-[1.02]"
+                            className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-display font-black uppercase tracking-wider py-3 sm:py-3.5 px-5 sm:px-7 rounded-xl sm:rounded-2xl shadow-md transition-all cursor-pointer text-xs disabled:cursor-not-allowed hover:scale-[1.02]"
                           >
                             <Play className="w-4 h-4 fill-current text-white shrink-0" />
-                            <span>Çalışmayı Başlat ({targetWordsCount})</span>
+                            <span>Başlat ({targetWordsCount})</span>
                           </button>
                         </div>
 
@@ -1122,6 +1231,20 @@ export default function App() {
           onAddWord={handleAddWord}
           onDeleteList={handleDeleteList}
         />
+      )}
+
+      {activeTab === 'study' && !isStudying && (
+        <div className="fixed left-0 right-0 bottom-[68px] z-50 md:hidden px-4 pointer-events-none">
+          <button
+            type="button"
+            onClick={handleStartStudy}
+            disabled={selectedListIds.length === 0 || targetWordsCount === 0}
+            className="pointer-events-auto w-full max-w-md mx-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 disabled:hover:bg-indigo-600 text-white font-display font-black uppercase tracking-wider py-3.5 px-5 rounded-2xl shadow-lg transition-all cursor-pointer text-xs disabled:cursor-not-allowed"
+          >
+            <Play className="w-4 h-4 fill-current text-white shrink-0" />
+            <span>Başlat ({targetWordsCount})</span>
+          </button>
+        </div>
       )}
 
       {/* Mobile Bottom Navigation Bar */}

@@ -15,7 +15,7 @@ export default function StatsView({ words, lists, onResetLearned }: StatsViewPro
   const learnedPercentage = totalWords > 0 ? Math.round((learnedWords / totalWords) * 100) : 0;
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-2xl p-3 sm:p-4 shadow-3xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-6">
+    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-2xl p-2 sm:p-4 shadow-3xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-6">
       {/* Stats container */}
       <div className="grid grid-cols-3 gap-1 sm:gap-6 w-full sm:w-auto flex-1 divide-x divide-slate-100 dark:divide-slate-800/60">
         {/* Total Words */}
@@ -25,7 +25,7 @@ export default function StatsView({ words, lists, onResetLearned }: StatsViewPro
             <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-center sm:text-left">Toplam</span>
           </div>
           <div className="flex items-baseline space-x-1 mt-0.5">
-            <span className="text-base sm:text-xl font-display font-black text-slate-800 dark:text-slate-100">{totalWords}</span>
+            <span className="text-sm sm:text-xl font-display font-black text-slate-800 dark:text-slate-100">{totalWords}</span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Klm.</span>
           </div>
         </div>
@@ -37,7 +37,7 @@ export default function StatsView({ words, lists, onResetLearned }: StatsViewPro
             <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-center sm:text-left">Öğrenilen</span>
           </div>
           <div className="flex items-baseline space-x-1 mt-0.5">
-            <span className="text-base sm:text-xl font-display font-black text-emerald-600 dark:text-emerald-400">{learnedWords}</span>
+            <span className="text-sm sm:text-xl font-display font-black text-emerald-600 dark:text-emerald-400">{learnedWords}</span>
             <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium hidden xs:inline">({unlearnedWords} kaldı)</span>
           </div>
         </div>
@@ -49,7 +49,7 @@ export default function StatsView({ words, lists, onResetLearned }: StatsViewPro
             <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider text-center sm:text-left">Başarı</span>
           </div>
           <div className="flex items-center space-x-2 mt-0.5">
-            <span className="text-base sm:text-xl font-display font-black text-indigo-600 dark:text-indigo-400">%{learnedPercentage}</span>
+            <span className="text-sm sm:text-xl font-display font-black text-indigo-600 dark:text-indigo-400">%{learnedPercentage}</span>
             {/* Tiny progress bar */}
             <div className="hidden md:block w-14 bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
               <div 
@@ -62,7 +62,7 @@ export default function StatsView({ words, lists, onResetLearned }: StatsViewPro
       </div>
 
       {/* Reset Action */}
-      <div className="shrink-0 border-t sm:border-t-0 sm:border-l border-slate-100 dark:border-slate-800/60 pt-2 sm:pt-0 sm:pl-4 flex items-center justify-between sm:justify-end gap-2">
+      <div className="hidden sm:flex shrink-0 border-t sm:border-t-0 sm:border-l border-slate-100 dark:border-slate-800/60 pt-2 sm:pt-0 sm:pl-4 items-center justify-between sm:justify-end gap-2">
         <span className="sm:hidden text-[9px] text-slate-400 font-medium">İlerlemeyi sıfırla:</span>
         <button
           onClick={() => {

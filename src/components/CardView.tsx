@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Word } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Volume2, Check, RefreshCw, ChevronLeft, ChevronRight, AlertCircle, XCircle } from 'lucide-react';
+import { Volume2, VolumeX, Check, RefreshCw, ChevronLeft, ChevronRight, AlertCircle, XCircle } from 'lucide-react';
 import { speakWord, getWordTypeColor } from '../utils';
 
 interface CardViewProps {
@@ -14,6 +14,7 @@ interface CardViewProps {
   onSetStatus: (status: 'unmarked' | 'learned' | 'struggled') => void;
   currentIndex: number;
   totalCount: number;
+  pronunciationEnabled: boolean;
 }
 
 export default function CardView({
@@ -25,7 +26,8 @@ export default function CardView({
   onPrev,
   onSetStatus,
   currentIndex,
-  totalCount
+  totalCount,
+  pronunciationEnabled
 }: CardViewProps) {
   const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -67,6 +69,7 @@ export default function CardView({
   // Audio speech
   const handlePronounce = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card flip when clicking audio button
+    if (!pronunciationEnabled) return;
     speakWord(word.term);
   };
 
@@ -111,7 +114,10 @@ export default function CardView({
   };
 
   return (
-    <div className="w-full max-w-md mx-auto flex flex-col items-center px-2">
+    <div
+      className="w-full max-w-md mx-auto flex flex-col items-center px-2 select-none"
+      style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+    >
       {/* Study snapshot */}
       <div className="w-full mb-3 space-y-2.5">
         <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -168,7 +174,10 @@ export default function CardView({
       </div>
 
       {/* 3D Card Container with Perspective */}
-      <div className="w-full h-[310px] sm:h-[390px] md:h-[420px] perspective-1000 touch-none select-none relative">
+      <div
+        className="w-full h-[310px] sm:h-[390px] md:h-[420px] perspective-1000 touch-none select-none relative"
+        style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+      >
         <motion.div
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
@@ -243,17 +252,22 @@ export default function CardView({
 
               {/* Central English Term */}
               <div className="flex flex-col items-center justify-center text-center space-y-3 sm:space-y-4">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-black tracking-tight text-slate-900 dark:text-white leading-tight break-all select-all">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-black tracking-tight text-slate-900 dark:text-white leading-tight break-all select-none">
                   {word.term}
                 </h1>
                 
                 {/* Audio voice button */}
                 <button
                   onClick={handlePronounce}
-                  className="p-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-indigo-400 rounded-full transition-all active:scale-95 cursor-pointer flex items-center justify-center"
-                  title="Sesli Telaffuz"
+                  disabled={!pronunciationEnabled}
+                  className={`p-3 rounded-full transition-all active:scale-95 flex items-center justify-center ${
+                    pronunciationEnabled
+                      ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-slate-800 dark:hover:bg-slate-750 dark:text-indigo-400 cursor-pointer'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-850 dark:text-slate-600 cursor-not-allowed'
+                  }`}
+                  title={pronunciationEnabled ? 'Sesli Telaffuz' : 'Telaffuz kapalı'}
                 >
-                  <Volume2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                  {pronunciationEnabled ? <Volume2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" /> : <VolumeX className="w-4.5 h-4.5 sm:w-5 sm:h-5" />}
                 </button>
               </div>
 
@@ -283,9 +297,15 @@ export default function CardView({
                   </span>
                   <button
                     onClick={handlePronounce}
-                    className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-slate-900 dark:text-indigo-450 rounded-full transition-colors cursor-pointer"
+                    disabled={!pronunciationEnabled}
+                    className={`p-1.5 rounded-full transition-colors ${
+                      pronunciationEnabled
+                        ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-650 dark:bg-slate-900 dark:text-indigo-450 cursor-pointer'
+                        : 'bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-650 cursor-not-allowed'
+                    }`}
+                    title={pronunciationEnabled ? 'Sesli Telaffuz' : 'Telaffuz kapalı'}
                   >
-                    <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                    {pronunciationEnabled ? <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <VolumeX className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
                   </button>
                 </div>
                 <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-indigo-100/30 bg-indigo-50/50 dark:bg-indigo-950/25">
