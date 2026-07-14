@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Word, WordList } from './types';
+import { StudyHistoryEntry, Word, WordList } from './types';
 import { parseCSV, defaultCSVData, speakWord } from './utils';
 import StatsView from './components/StatsView';
 import CSVImporter from './components/CSVImporter';
@@ -7,6 +7,7 @@ import CardView from './components/CardView';
 import QuizView from './components/QuizView';
 import WordExplorer from './components/WordExplorer';
 import ListInspectorModal from './components/ListInspectorModal';
+import StudyHistoryView from './components/StudyHistoryView';
 import { 
   BookOpen, 
   RotateCcw, 
@@ -29,7 +30,8 @@ import {
   Lock,
   LogOut,
   Volume2,
-  VolumeX
+  VolumeX,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -47,6 +49,8 @@ interface QuizAnswerSnapshot {
   isCorrect: boolean;
 }
 
+const STUDY_HISTORY_STORAGE_KEY = 'lexicards_study_history';
+
 export default function App() {
   const [lists, setLists] = useState<WordList[]>([]);
   const [words, setWords] = useState<Word[]>([]);
@@ -54,9 +58,20 @@ export default function App() {
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [studyHistory, setStudyHistory] = useState<StudyHistoryEntry[]>(() => {
+    try {
+      const savedHistory = localStorage.getItem(STUDY_HISTORY_STORAGE_KEY);
+      if (!savedHistory) return [];
+      const parsedHistory = JSON.parse(savedHistory);
+      return Array.isArray(parsedHistory) ? parsedHistory : [];
+    } catch (error) {
+      console.error('Error loading study history', error);
+      return [];
+    }
+  });
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'collections' | 'study' | 'library' | 'import'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'study' | 'history' | 'library' | 'import'>('collections');
   
   // Dashboard states
   const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
@@ -74,6 +89,9 @@ export default function App() {
   const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(true);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerSnapshot>>({});
   const [quizNavDirection, setQuizNavDirection] = useState<1 | -1>(1);
+  const sessionStartedAtRef = React.useRef(new Date().toISOString());
+  const sessionListSnapshotRef = React.useRef<Array<Pick<WordList, 'id' | 'name'>>>([]);
+  const completionRecordedRef = React.useRef(false);
 
   // Modal inspection states
   const [inspectingListId, setInspectingListId] = useState<string | null>(null);
@@ -135,7 +153,7 @@ export default function App() {
     setLoginPassword('');
   };
 
-  const handleTabChange = (tab: 'collections' | 'study' | 'library' | 'import') => {
+  const handleTabChange = (tab: 'collections' | 'study' | 'history' | 'library' | 'import') => {
     setIsStudying(false);
     setInspectingListId(null);
     setActiveTab(tab);
@@ -326,6 +344,13 @@ export default function App() {
     setQuizNavDirection(1);
     setIsStudying(true);
     setIsCompleted(false);
+    sessionStartedAtRef.current = new Date().toISOString();
+    const studiedListIds = new Set(candidates.map(word => word.listId));
+    sessionListSnapshotRef.current = selectedListIds.filter(listId => studiedListIds.has(listId)).map(listId => {
+      const selectedList = lists.find(list => list.id === listId);
+      return { id: listId, name: selectedList?.name ?? 'Silinmiş liste' };
+    });
+    completionRecordedRef.current = false;
 
     // Pronounce first word (only if the English word is the prompt)
     if (candidates.length > 0) {
@@ -333,6 +358,45 @@ export default function App() {
         setTimeout(() => speakWord(candidates[0].term), 300);
       }
     }
+  };
+
+  const recordCompletedStudy = () => {
+    if (completionRecordedRef.current || sessionWords.length === 0) return;
+    completionRecordedRef.current = true;
+
+    const quizStats = sessionWords.reduce(
+      (stats, word) => {
+        const answer = quizAnswers[word.id];
+        if (!answer?.isAnswered) stats.unanswered += 1;
+        else if (answer.isCorrect) stats.correct += 1;
+        else stats.wrong += 1;
+        return stats;
+      },
+      { correct: 0, wrong: 0, unanswered: 0 },
+    );
+    const learnedCount = sessionWords.filter(word => word.status === 'learned' || word.learned).length;
+    const successRate = Math.round(
+      ((studyType === 'quiz' ? quizStats.correct : learnedCount) / sessionWords.length) * 100,
+    );
+    const historyEntry: StudyHistoryEntry = {
+      id: `study_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      startedAt: sessionStartedAtRef.current,
+      completedAt: new Date().toISOString(),
+      lists: sessionListSnapshotRef.current,
+      studyType,
+      studyMode,
+      filterMode,
+      quizMode: studyType === 'quiz' ? quizMode : undefined,
+      wordCount: sessionWords.length,
+      successRate,
+      ...(studyType === 'quiz' ? quizStats : { learnedCount }),
+    };
+
+    setStudyHistory(previousHistory => {
+      const nextHistory = [historyEntry, ...previousHistory];
+      localStorage.setItem(STUDY_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
+      return nextHistory;
+    });
   };
 
   // Card view events
@@ -349,6 +413,7 @@ export default function App() {
         }
       } else {
         // Study Completed!
+        recordCompletedStudy();
         setIsCompleted(true);
       }
     }, 150);
@@ -371,6 +436,11 @@ export default function App() {
 
   const handleCardFlip = () => {
     setIsFlipped(!isFlipped);
+  };
+
+  const handleClearStudyHistory = () => {
+    localStorage.removeItem(STUDY_HISTORY_STORAGE_KEY);
+    setStudyHistory([]);
   };
 
   const handleSetStatusOnActiveWord = (status: 'unmarked' | 'learned' | 'struggled') => {
@@ -798,6 +868,17 @@ export default function App() {
                   <span>Çalışma Odası</span>
                 </button>
                 <button
+                  onClick={() => handleTabChange('history')}
+                  className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'history'
+                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-450 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  <span>Geçmiş</span>
+                </button>
+                <button
                   onClick={() => handleTabChange('library')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeTab === 'library'
@@ -1184,6 +1265,18 @@ export default function App() {
                   </motion.div>
                 )}
 
+                {activeTab === 'history' && (
+                  <motion.div
+                    key="tab-history"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <StudyHistoryView entries={studyHistory} onClear={handleClearStudyHistory} />
+                  </motion.div>
+                )}
+
                 {activeTab === 'library' && (
                   <motion.div
                     key="tab-library"
@@ -1248,13 +1341,13 @@ export default function App() {
       )}
 
       {/* Mobile Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-45 md:hidden bg-white/95 dark:bg-slate-950/95 border-t border-slate-200/50 dark:border-slate-850/80 backdrop-blur-md px-2 py-2 flex justify-around items-center shadow-[0_-4px_12px_rgba(0,0,0,0.03)] pb-safe">
+      <div className="fixed bottom-0 left-0 right-0 z-45 md:hidden bg-white/95 dark:bg-slate-950/95 border-t border-slate-200/50 dark:border-slate-850/80 backdrop-blur-md px-1 py-2 flex justify-around items-center shadow-[0_-4px_12px_rgba(0,0,0,0.03)] pb-safe">
         {/* Collection Tab */}
         <button
           onClick={() => {
             handleTabChange('collections');
           }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'collections'
               ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
               : 'text-slate-450 dark:text-slate-500'
@@ -1269,7 +1362,7 @@ export default function App() {
           onClick={() => {
             handleTabChange('study');
           }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'study'
               ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
               : 'text-slate-450 dark:text-slate-500'
@@ -1279,12 +1372,27 @@ export default function App() {
           <span className="text-[10px] tracking-tight">Çalışma</span>
         </button>
 
+        {/* History Tab */}
+        <button
+          onClick={() => {
+            handleTabChange('history');
+          }}
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+            !isStudying && activeTab === 'history'
+              ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
+              : 'text-slate-450 dark:text-slate-500'
+          }`}
+        >
+          <History className="w-5 h-5 mb-0.5" />
+          <span className="text-[10px] tracking-tight">Geçmiş</span>
+        </button>
+
         {/* Library Tab */}
         <button
           onClick={() => {
             handleTabChange('library');
           }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'library'
               ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
               : 'text-slate-450 dark:text-slate-500'
@@ -1299,7 +1407,7 @@ export default function App() {
           onClick={() => {
             handleTabChange('import');
           }}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
             !isStudying && activeTab === 'import'
               ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
               : 'text-slate-450 dark:text-slate-500'

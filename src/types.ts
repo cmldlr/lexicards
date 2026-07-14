@@ -21,3 +21,20 @@ export interface StudySession {
   mode: 'sequential' | 'shuffled';
   selectedListIds: string[];
 }
+
+export interface StudyHistoryEntry {
+  id: string;
+  startedAt: string;
+  completedAt: string;
+  lists: Array<Pick<WordList, 'id' | 'name'>>;
+  studyType: 'card' | 'quiz';
+  studyMode: 'sequential' | 'shuffled';
+  filterMode: 'all' | 'unlearned' | 'learned';
+  quizMode?: 'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word';
+  wordCount: number;
+  successRate: number;
+  correct?: number;
+  wrong?: number;
+  unanswered?: number;
+  learnedCount?: number;
+}
