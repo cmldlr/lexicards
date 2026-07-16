@@ -24,6 +24,7 @@ interface QuizViewProps {
   answerStates: Record<string, QuizAnswerState>;
   navDirection: 1 | -1;
   pronunciationEnabled: boolean;
+  hapticsEnabled: boolean;
   onNext: () => void;
   onPrev: () => void;
   onJumpToIndex: (index: number) => void;
@@ -54,6 +55,7 @@ export default function QuizView({
   answerStates,
   navDirection,
   pronunciationEnabled,
+  hapticsEnabled,
   onNext,
   onPrev,
   onJumpToIndex,
@@ -228,6 +230,10 @@ export default function QuizView({
       isCorrect: correct
     });
 
+    if (hapticsEnabled && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate(correct ? 18 : [20, 35, 20]);
+    }
+
     if (correct) {
       // Speak term for confirmation & pronunciation reinforcement
       if (pronunciationEnabled) {
@@ -361,7 +367,7 @@ export default function QuizView({
         </div>
 
         {/* Question Area */}
-        <div className="text-center py-4 px-2 bg-slate-50/30 dark:bg-slate-950/20 border border-slate-100/60 dark:border-slate-850 rounded-2xl mb-6">
+        <div className="flex h-[122px] flex-col justify-center overflow-y-auto overscroll-contain text-center py-3 px-2 bg-slate-50/30 dark:bg-slate-950/20 border border-slate-100/60 dark:border-slate-850 rounded-2xl mb-5 sm:h-auto sm:min-h-[122px] sm:py-4 sm:mb-6">
           <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-widest block mb-2">
             {quizMode === 'syn-to-word'
               ? 'syn verildi, kelimeyi seç:'
@@ -375,20 +381,20 @@ export default function QuizView({
 
           {quizMode === 'syn-to-word' ? (
             <div className="space-y-2">
-              <h1 className="text-xl sm:text-2xl font-serif italic font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words">
+              <h1 className="text-xl sm:text-2xl font-serif italic font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words [overflow-wrap:anywhere]">
                 "{word.synonyms}"
               </h1>
             </div>
           ) : quizMode === 'tr-to-word' ? (
             <div className="space-y-2">
-              <h1 className="text-xl sm:text-2xl font-display font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words">
+              <h1 className="text-xl sm:text-2xl font-display font-black text-indigo-700 dark:text-indigo-400 leading-relaxed px-4 break-words [overflow-wrap:anywhere]">
                 {word.turkishMeanings.join(', ')}
               </h1>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center space-y-2">
               <div className="flex items-center space-x-2">
-                <h1 className="text-2xl sm:text-3xl font-display font-black text-slate-800 dark:text-white tracking-tight break-all">
+                <h1 className="max-w-full text-2xl sm:text-3xl font-display font-black text-slate-800 dark:text-white tracking-tight break-words [overflow-wrap:anywhere]">
                   {word.term}
                 </h1>
                 <button
@@ -460,7 +466,7 @@ export default function QuizView({
               >
                 <div className="flex items-center space-x-3 min-w-0 pr-2">
                   {iconElement}
-                  <span className="min-w-0 whitespace-normal break-words leading-snug">
+                  <span className="min-w-0 whitespace-normal break-words leading-snug [overflow-wrap:anywhere]">
                     {getChoiceText(choice)}
                   </span>
                 </div>
@@ -477,61 +483,32 @@ export default function QuizView({
           })}
         </div>
 
-        {/* Answer Feedback */}
-        <AnimatePresence>
-          {isAnswered && (
+        {/* Fixed-height feedback keeps the mobile quiz layout from jumping after an answer. */}
+        <div className="mt-3 h-10 overflow-hidden rounded-xl border border-slate-100 bg-slate-50/60 px-3 dark:border-slate-850 dark:bg-slate-950/35">
+          <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-850 overflow-hidden"
+              key={isAnswered ? (isCorrect ? 'correct' : 'wrong') : 'waiting'}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="flex h-full min-w-0 items-center justify-center gap-2 text-center"
             >
-              <div className="flex items-start space-x-2.5">
-                {isCorrect ? (
-                  <div className="p-1.5 bg-emerald-50 dark:bg-emerald-950/50 rounded-xl text-emerald-600 shrink-0 mt-0.5">
-                    <Sparkles className="w-4 h-4 animate-spin-slow" />
-                  </div>
-                ) : (
-                  <div className="p-1.5 bg-rose-50 dark:bg-rose-950/50 rounded-xl text-rose-600 shrink-0 mt-0.5">
-                    <Info className="w-4 h-4" />
-                  </div>
-                )}
-                <div className="space-y-0.5">
-                  <p className={`text-xs font-black uppercase tracking-wider ${isCorrect ? 'text-emerald-650 dark:text-emerald-400' : 'text-rose-650 dark:text-rose-400'}`}>
-                    {isCorrect ? 'Tebrikler! Doğru Cevap' : 'Yanlış Cevap! Doğrusu:'}
+              {isAnswered ? (
+                <>
+                  {isCorrect ? <Sparkles className="h-4 w-4 shrink-0 text-emerald-500" /> : <Info className="h-4 w-4 shrink-0 text-rose-500" />}
+                  <p className={`min-w-0 truncate text-[10px] font-black uppercase tracking-wider ${isCorrect ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {isCorrect ? 'Doğru cevap' : `Yanlış · Doğru: ${getChoiceText(choices.find(choice => choice.id === word.id) ?? { id: word.id, term: word.term, synonyms: word.synonyms, turkishMeanings: word.turkishMeanings })}`}
                   </p>
-                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-350 font-bold leading-normal">
-                    {quizMode === 'syn-to-word' || quizMode === 'tr-to-word' ? (
-                      <span>
-                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong>
-                        {word.turkishMeanings.length > 0 && ` (${word.turkishMeanings.join(', ')})`}
-                      </span>
-                    ) : quizMode === 'word-to-syn' ? (
-                      <span>
-                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong> eş anlamlıları: <em className="text-slate-500 font-medium">"{word.synonyms}"</em>
-                      </span>
-                    ) : (
-                      <span>
-                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{word.term}</strong>: <em className="text-slate-500 font-medium">{word.turkishMeanings.join(', ')}</em>
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={onNext}
-                className="hidden"
-              >
-                <span>{currentIndex < totalCount - 1 ? 'Sonraki Soru' : 'Sonuçları Gör'}</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
+                </>
+              ) : (
+                <p className="truncate text-[9px] font-bold uppercase tracking-wider text-slate-400">Şıkkı seç, tekrar dokunarak onayla</p>
+              )}
             </motion.div>
-          )}
-        </AnimatePresence>
+          </AnimatePresence>
+        </div>
 
         {/* Navigation */}
-        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between gap-3">
+        <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between gap-3 sm:mt-5 sm:pt-4">
           <button
             onClick={onPrev}
             disabled={currentIndex === 0}
@@ -555,15 +532,6 @@ export default function QuizView({
         </div>
       </div>
 
-      {/* Secondary mini helper banner to prompt space-bar or clicking */}
-      {!isAnswered && (
-        <div className="text-center">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 flex items-center justify-center space-x-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-            <span>Doğru şıkka tıklayarak cevap verin</span>
-          </p>
-        </div>
-      )}
         </motion.div>
       </AnimatePresence>
     </div>

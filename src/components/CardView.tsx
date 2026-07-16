@@ -175,8 +175,8 @@ export default function CardView({
 
       {/* 3D Card Container with Perspective */}
       <div
-        className="w-full h-[310px] sm:h-[390px] md:h-[420px] perspective-1000 touch-none select-none relative"
-        style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+        className="relative w-full min-h-[330px] perspective-1000 touch-pan-y select-none"
+        style={{ height: 'clamp(330px, 48dvh, 460px)', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
       >
         <motion.div
           drag="x"
@@ -252,7 +252,7 @@ export default function CardView({
 
               {/* Central English Term */}
               <div className="flex flex-col items-center justify-center text-center space-y-3 sm:space-y-4">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-black tracking-tight text-slate-900 dark:text-white leading-tight break-all select-none">
+                <h1 className="max-w-full text-2xl sm:text-3xl md:text-4xl font-display font-black tracking-tight text-slate-900 dark:text-white leading-tight break-words [overflow-wrap:anywhere] select-none">
                   {word.term}
                 </h1>
                 
@@ -292,7 +292,7 @@ export default function CardView({
               {/* Back Top header */}
               <div className="flex justify-between items-center border-b border-slate-200/50 dark:border-slate-850 pb-2 sm:pb-3">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs sm:text-sm font-display font-black text-slate-800 dark:text-slate-100 break-all max-w-[120px] sm:max-w-[150px] truncate">
+                  <span className="max-w-[120px] truncate break-words text-xs font-display font-black text-slate-800 [overflow-wrap:anywhere] dark:text-slate-100 sm:max-w-[150px] sm:text-sm">
                     {word.term}
                   </span>
                   <button
@@ -348,11 +348,11 @@ export default function CardView({
                     {word.turkishMeanings.map((meaning, idx) => {
                       const { text, cleanMeaning, colorClass } = getWordTypeColor(meaning);
                       return (
-                        <div 
+                        <div
                           key={idx} 
-                          className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 rounded-xl text-[13px] sm:text-sm text-slate-900 dark:text-slate-100 font-black shadow-3xs"
+                          className="flex max-w-full items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200/70 dark:border-slate-800 rounded-xl text-[13px] sm:text-sm text-slate-900 dark:text-slate-100 font-black shadow-3xs"
                         >
-                          <span>{cleanMeaning}</span>
+                          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{cleanMeaning}</span>
                           {text && (
                             <span className={`text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-md font-mono tracking-wider font-bold uppercase ${colorClass}`}>
                               {text}
@@ -430,7 +430,7 @@ export default function CardView({
             onClick={onNext}
             className="flex items-center justify-center space-x-1 py-2.5 sm:py-3 px-3 sm:px-4 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-250 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-3xs transition-all active:scale-99 cursor-pointer text-[11px] sm:text-xs uppercase tracking-wider font-bold"
           >
-            <span>Sonraki</span>
+            <span>{currentIndex < totalCount - 1 ? 'Sonraki' : 'Çalışmayı Bitir'}</span>
             <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-450" />
           </button>
         </div>

@@ -32,7 +32,11 @@ import {
   Volume2,
   VolumeX,
   History,
-  Search
+  Search,
+  ChevronDown,
+  MoreVertical,
+  X,
+  Vibrate
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -50,10 +54,51 @@ interface QuizAnswerSnapshot {
   isCorrect: boolean;
 }
 
+interface PersistedStudySession {
+  version: 1;
+  sessionWords: Word[];
+  currentIndex: number;
+  isFlipped: boolean;
+  quizAnswers: Record<string, QuizAnswerSnapshot>;
+  quizNavDirection: 1 | -1;
+  startedAt: string;
+  lists: Array<Pick<WordList, 'id' | 'name'>>;
+  studyMode: 'sequential' | 'shuffled';
+  filterMode: 'all' | 'unlearned' | 'learned';
+  studyType: 'card' | 'quiz';
+  quizMode: 'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word';
+}
+
 const STUDY_HISTORY_STORAGE_KEY = 'lexicards_study_history';
 const PRONUNCIATION_STORAGE_KEY = 'lexicards_pronunciation_enabled';
+const HAPTICS_STORAGE_KEY = 'lexicards_haptics_enabled';
+const ACTIVE_STUDY_STORAGE_KEY = 'lexicards_active_study';
+const ACTIVE_TAB_STORAGE_KEY = 'lexicards_active_tab';
+
+const loadPersistedStudySession = (): PersistedStudySession | null => {
+  try {
+    const savedSession = localStorage.getItem(ACTIVE_STUDY_STORAGE_KEY);
+    if (!savedSession) return null;
+    const parsedSession = JSON.parse(savedSession) as PersistedStudySession;
+    if (
+      parsedSession.version !== 1
+      || !Array.isArray(parsedSession.sessionWords)
+      || parsedSession.sessionWords.length === 0
+      || !Number.isInteger(parsedSession.currentIndex)
+    ) {
+      localStorage.removeItem(ACTIVE_STUDY_STORAGE_KEY);
+      return null;
+    }
+    return parsedSession;
+  } catch (error) {
+    console.error('Error loading active study session', error);
+    localStorage.removeItem(ACTIVE_STUDY_STORAGE_KEY);
+    return null;
+  }
+};
 
 export default function App() {
+  const [restoredStudySession] = useState(loadPersistedStudySession);
   const [lists, setLists] = useState<WordList[]>([]);
   const [words, setWords] = useState<Word[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('lexicards_auth') === 'true');
@@ -73,31 +118,46 @@ export default function App() {
   });
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'collections' | 'study' | 'history' | 'library' | 'import'>('collections');
+  const [activeTab, setActiveTab] = useState<'collections' | 'study' | 'history' | 'library' | 'import'>(() => {
+    if (restoredStudySession) return 'study';
+    const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    return savedTab && ['collections', 'study', 'history', 'library', 'import'].includes(savedTab)
+      ? savedTab as 'collections' | 'study' | 'history' | 'library' | 'import'
+      : 'collections';
+  });
   
   // Dashboard states
   const [selectedListIds, setSelectedListIds] = useState<string[]>([]);
-  const [studyMode, setStudyMode] = useState<'sequential' | 'shuffled'>('sequential');
-  const [filterMode, setFilterMode] = useState<'all' | 'unlearned' | 'learned'>('all');
-  const [studyType, setStudyType] = useState<'card' | 'quiz'>('card');
-  const [quizMode, setQuizMode] = useState<'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word'>('syn-to-word');
+  const [studyMode, setStudyMode] = useState<'sequential' | 'shuffled'>(restoredStudySession?.studyMode ?? 'sequential');
+  const [filterMode, setFilterMode] = useState<'all' | 'unlearned' | 'learned'>(restoredStudySession?.filterMode ?? 'all');
+  const [studyType, setStudyType] = useState<'card' | 'quiz'>(restoredStudySession?.studyType ?? 'card');
+  const [quizMode, setQuizMode] = useState<'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word'>(restoredStudySession?.quizMode ?? 'syn-to-word');
   const [collectionQuery, setCollectionQuery] = useState('');
   const [collectionVisibility, setCollectionVisibility] = useState<'all' | 'selected' | 'unselected'>('all');
   const [collectionSort, setCollectionSort] = useState<'default' | 'name-asc' | 'name-desc' | 'count-desc' | 'count-asc'>('default');
+  const [isSessionSettingsExpanded, setIsSessionSettingsExpanded] = useState(false);
+  const [isCollectionSheetOpen, setIsCollectionSheetOpen] = useState(false);
+  const [isMobileHeaderMenuOpen, setIsMobileHeaderMenuOpen] = useState(false);
   
   // Active study states
-  const [isStudying, setIsStudying] = useState(false);
+  const [isStudying, setIsStudying] = useState(restoredStudySession !== null);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [sessionWords, setSessionWords] = useState<Word[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [sessionWords, setSessionWords] = useState<Word[]>(restoredStudySession?.sessionWords ?? []);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    if (!restoredStudySession) return 0;
+    return Math.min(Math.max(restoredStudySession.currentIndex, 0), restoredStudySession.sessionWords.length - 1);
+  });
+  const [isFlipped, setIsFlipped] = useState(restoredStudySession?.isFlipped ?? false);
   const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(
     () => localStorage.getItem(PRONUNCIATION_STORAGE_KEY) !== 'false',
   );
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerSnapshot>>({});
-  const [quizNavDirection, setQuizNavDirection] = useState<1 | -1>(1);
-  const sessionStartedAtRef = React.useRef(new Date().toISOString());
-  const sessionListSnapshotRef = React.useRef<Array<Pick<WordList, 'id' | 'name'>>>([]);
+  const [isHapticsEnabled, setIsHapticsEnabled] = useState(
+    () => localStorage.getItem(HAPTICS_STORAGE_KEY) === 'true',
+  );
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerSnapshot>>(restoredStudySession?.quizAnswers ?? {});
+  const [quizNavDirection, setQuizNavDirection] = useState<1 | -1>(restoredStudySession?.quizNavDirection ?? 1);
+  const sessionStartedAtRef = React.useRef(restoredStudySession?.startedAt ?? new Date().toISOString());
+  const sessionListSnapshotRef = React.useRef<Array<Pick<WordList, 'id' | 'name'>>>(restoredStudySession?.lists ?? []);
   const completionRecordedRef = React.useRef(false);
 
   // Modal inspection states
@@ -126,6 +186,76 @@ export default function App() {
     localStorage.setItem(PRONUNCIATION_STORAGE_KEY, String(isPronunciationEnabled));
   }, [isPronunciationEnabled]);
 
+  useEffect(() => {
+    localStorage.setItem(HAPTICS_STORAGE_KEY, String(isHapticsEnabled));
+  }, [isHapticsEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!isStudying || isCompleted || sessionWords.length === 0) {
+      localStorage.removeItem(ACTIVE_STUDY_STORAGE_KEY);
+      return;
+    }
+
+    const activeSession: PersistedStudySession = {
+      version: 1,
+      sessionWords,
+      currentIndex,
+      isFlipped,
+      quizAnswers,
+      quizNavDirection,
+      startedAt: sessionStartedAtRef.current,
+      lists: sessionListSnapshotRef.current,
+      studyMode,
+      filterMode,
+      studyType,
+      quizMode,
+    };
+
+    const persistSession = () => {
+      try {
+        localStorage.setItem(ACTIVE_STUDY_STORAGE_KEY, JSON.stringify(activeSession));
+      } catch (error) {
+        console.error('Error saving active study session', error);
+      }
+    };
+    const persistWhenHidden = () => {
+      if (document.visibilityState === 'hidden') persistSession();
+    };
+
+    persistSession();
+    document.addEventListener('visibilitychange', persistWhenHidden);
+    window.addEventListener('pagehide', persistSession);
+    return () => {
+      document.removeEventListener('visibilitychange', persistWhenHidden);
+      window.removeEventListener('pagehide', persistSession);
+    };
+  }, [
+    currentIndex,
+    filterMode,
+    isCompleted,
+    isFlipped,
+    isStudying,
+    quizAnswers,
+    quizMode,
+    quizNavDirection,
+    sessionWords,
+    studyMode,
+    studyType,
+  ]);
+
+  useEffect(() => {
+    if (!isCollectionSheetOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isCollectionSheetOpen]);
+
   const loadDefaultData = () => {
     const { lists: parsedLists, words: parsedWords } = parseCSV(defaultCSVData);
     setLists(parsedLists);
@@ -136,6 +266,13 @@ export default function App() {
     if (parsedLists.length > 0) {
       setSelectedListIds([parsedLists[0].id]);
     }
+  };
+
+  const handleResetToDefaults = () => {
+    if (confirm('Verilerinizi ilk günkü varsayılan kelimelere (Day 19-26) döndürmek istiyor musunuz?')) {
+      loadDefaultData();
+    }
+    setIsMobileHeaderMenuOpen(false);
   };
 
   const saveToLocalStorage = (currentLists: WordList[], currentWords: Word[]) => {
@@ -160,6 +297,7 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('lexicards_auth');
+    setIsMobileHeaderMenuOpen(false);
     setIsAuthenticated(false);
     setLoginPassword('');
   };
@@ -167,6 +305,8 @@ export default function App() {
   const handleTabChange = (tab: 'collections' | 'study' | 'history' | 'library' | 'import') => {
     setIsStudying(false);
     setInspectingListId(null);
+    setIsCollectionSheetOpen(false);
+    setIsMobileHeaderMenuOpen(false);
     setActiveTab(tab);
   };
 
@@ -353,6 +493,7 @@ export default function App() {
     setIsFlipped(false);
     setQuizAnswers({});
     setQuizNavDirection(1);
+    setIsCollectionSheetOpen(false);
     setIsStudying(true);
     setIsCompleted(false);
     sessionStartedAtRef.current = new Date().toISOString();
@@ -546,6 +687,10 @@ export default function App() {
       ...new Set([...current, ...filteredAndSortedLists.map(list => list.id)]),
     ]);
   };
+  const selectedLists = lists.filter(list => selectedListIds.includes(list.id));
+  const estimatedStudyMinutes = targetWordsCount === 0
+    ? 0
+    : Math.max(1, Math.ceil((targetWordsCount * (studyType === 'quiz' ? 20 : 12)) / 60));
 
   const handleCreateListSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -649,7 +794,7 @@ export default function App() {
 
   if (isStudying) {
     return (
-      <div className="fixed inset-0 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-hidden select-none z-50">
+      <div className="fixed inset-0 h-[100dvh] bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-hidden select-none z-50">
         {/* Study Header */}
         <header className="bg-white/90 backdrop-blur-md dark:bg-slate-900/90 border-b border-slate-200/50 dark:border-slate-850 px-4 sm:px-6 py-3.5 flex items-center justify-between shrink-0">
           <button
@@ -812,6 +957,7 @@ export default function App() {
                       totalCount={sessionWords.length}
                       quizMode={quizMode}
                       pronunciationEnabled={isPronunciationEnabled}
+                      hapticsEnabled={isHapticsEnabled}
                       answerState={quizAnswers[sessionWords[currentIndex].id]}
                       answerStates={quizAnswers}
                       navDirection={quizNavDirection}
@@ -872,12 +1018,8 @@ export default function App() {
             </div>
 
             <button
-              onClick={() => {
-                if (confirm('Verilerinizi ilk günkü varsayılan kelimelere (Day 19-26) döndürmek istiyor musunuz?')) {
-                  loadDefaultData();
-                }
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-850 dark:text-slate-350 border border-slate-200/60 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-750 font-bold text-[10px] rounded-xl transition-all cursor-pointer shadow-3xs"
+              onClick={handleResetToDefaults}
+              className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-850 dark:text-slate-350 border border-slate-200/60 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-750 font-bold text-[10px] rounded-xl transition-all cursor-pointer shadow-3xs"
               title="Varsayılan Kelimeleri Yükle"
             >
               <RotateCcw className="w-3 h-3 text-indigo-500" />
@@ -885,12 +1027,56 @@ export default function App() {
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-850 dark:text-slate-350 border border-slate-200/60 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-750 font-bold text-[10px] rounded-xl transition-all cursor-pointer shadow-3xs"
+              className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-850 dark:text-slate-350 border border-slate-200/60 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-750 font-bold text-[10px] rounded-xl transition-all cursor-pointer shadow-3xs"
               title="Çıkış yap"
             >
               <LogOut className="w-3 h-3 text-slate-500" />
               <span>Çıkış</span>
             </button>
+
+            <div className="relative sm:hidden">
+              <button
+                type="button"
+                onClick={() => setIsMobileHeaderMenuOpen(current => !current)}
+                className="relative z-50 flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200/70 bg-white text-slate-600 shadow-3xs dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+                aria-expanded={isMobileHeaderMenuOpen}
+                aria-label="Menüyü aç"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </button>
+              {isMobileHeaderMenuOpen && (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-40 cursor-default bg-transparent"
+                    onClick={() => setIsMobileHeaderMenuOpen(false)}
+                    aria-label="Menüyü kapat"
+                  />
+                  <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+                    <div className="border-b border-slate-100 px-3 py-2 dark:border-slate-800">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">LexiCards</p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-700 dark:text-slate-200">{words.length} kelime · {lists.length} koleksiyon</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaults}
+                      className="mt-1 flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      <RotateCcw className="h-4 w-4 text-indigo-500" />
+                      Varsayılana sıfırla
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/25"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Çıkış yap
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -1239,12 +1425,73 @@ export default function App() {
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">{targetWordsCount} kelime hazır</span>
                             </div>
                           </div>
-                          <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1 rounded-full">
-                            {selectedListIds.length} liste
+                          <div className="flex items-center gap-2">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1 rounded-full">
+                              {selectedListIds.length} liste
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsSessionSettingsExpanded(current => !current)}
+                              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors active:bg-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 sm:hidden"
+                              aria-expanded={isSessionSettingsExpanded}
+                              aria-label={isSessionSettingsExpanded ? 'Seans ayarlarını daralt' : 'Seans ayarlarını aç'}
+                            >
+                              <ChevronDown className={`h-4 w-4 transition-transform ${isSessionSettingsExpanded ? 'rotate-180' : ''}`} />
+                            </button>
                           </div>
                         </div>
 
-                        <div className="space-y-1.5 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0">
+                        {!isSessionSettingsExpanded && (
+                          <div className="flex flex-wrap gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 sm:hidden">
+                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{studyMode === 'shuffled' ? 'Karışık' : 'Sıralı'}</span>
+                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{filterMode === 'all' ? 'Tümü' : filterMode === 'learned' ? 'Öğrenilen' : 'Öğrenilmeyen'}</span>
+                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{studyType === 'quiz' ? 'Quiz' : 'Kart'}</span>
+                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">Titreşim {isHapticsEnabled ? 'açık' : 'kapalı'}</span>
+                          </div>
+                        )}
+
+                        <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 shadow-inner shadow-slate-100/40 dark:border-slate-800 dark:bg-slate-950/35 dark:shadow-none sm:hidden">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Seçilen koleksiyonlar</p>
+                              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">{selectedListIds.length > 0 ? `${selectedListIds.length} liste · ${targetWordsCount} kelime · ~${estimatedStudyMinutes} dk` : 'Henüz koleksiyon seçilmedi'}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsCollectionSheetOpen(true)}
+                              className="min-h-10 shrink-0 cursor-pointer rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-indigo-700 shadow-3xs active:bg-indigo-50 dark:border-indigo-900/60 dark:bg-slate-900 dark:text-indigo-300"
+                            >
+                              {selectedListIds.length > 0 ? 'Düzenle' : 'Koleksiyon Seç'}
+                            </button>
+                          </div>
+                          {selectedLists.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 overflow-hidden">
+                              {selectedLists.slice(0, isSessionSettingsExpanded ? 6 : 3).map(list => (
+                                <button
+                                  key={list.id}
+                                  type="button"
+                                  onClick={() => handleToggleListId(list.id)}
+                                  className="flex min-h-8 max-w-[46%] cursor-pointer items-center gap-1 rounded-full border border-indigo-200 bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-slate-900 dark:text-indigo-300"
+                                  title={`${list.name} seçimini kaldır`}
+                                >
+                                  <span className="truncate">{list.name}</span>
+                                  <X className="h-3 w-3 shrink-0" />
+                                </button>
+                              ))}
+                              {selectedLists.length > (isSessionSettingsExpanded ? 6 : 3) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCollectionSheetOpen(true)}
+                                  className="min-h-8 cursor-pointer rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                                >
+                                  +{selectedLists.length - (isSessionSettingsExpanded ? 6 : 3)} diğer
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className={`${isSessionSettingsExpanded ? 'space-y-1.5' : 'hidden'} sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0`}>
                           <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2">
                             <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sıralama</label>
                             <div className="grid grid-cols-2 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
@@ -1254,6 +1501,17 @@ export default function App() {
                               <button type="button" onClick={() => setStudyMode('shuffled')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer ${studyMode === 'shuffled' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
                                 Karışık
                               </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/45 p-1.5 dark:border-slate-850 dark:bg-slate-950/20 sm:p-2">
+                            <label className="flex w-20 shrink-0 items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              <Vibrate className="h-3.5 w-3.5" />
+                              Titreşim
+                            </label>
+                            <div className="grid flex-1 grid-cols-2 gap-1 rounded-lg border border-slate-100 bg-white p-0.5 dark:border-slate-850 dark:bg-slate-950">
+                              <button type="button" onClick={() => setIsHapticsEnabled(true)} className={`rounded-md px-2 py-1.5 text-xs font-extrabold transition-all ${isHapticsEnabled ? 'bg-indigo-600 text-white shadow-3xs' : 'cursor-pointer text-slate-600 dark:text-slate-500'}`}>Açık</button>
+                              <button type="button" onClick={() => setIsHapticsEnabled(false)} className={`rounded-md px-2 py-1.5 text-xs font-extrabold transition-all ${!isHapticsEnabled ? 'bg-indigo-600 text-white shadow-3xs' : 'cursor-pointer text-slate-600 dark:text-slate-500'}`}>Kapalı</button>
                             </div>
                           </div>
 
@@ -1306,7 +1564,7 @@ export default function App() {
                         </div>
 
                         {/* Koleksiyon Seçimi */}
-                        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
+                        <div className="hidden space-y-2 border-t border-slate-100 pt-2 dark:border-slate-850 sm:block">
                           <div className="flex items-center justify-between gap-2">
                             <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
                               Koleksiyonlar · {filteredAndSortedLists.length}
@@ -1413,7 +1671,7 @@ export default function App() {
                             className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-display font-black uppercase tracking-wider py-3 sm:py-3.5 px-5 sm:px-7 rounded-xl sm:rounded-2xl shadow-md transition-all cursor-pointer text-xs disabled:cursor-not-allowed hover:scale-[1.02]"
                           >
                             <Play className="w-4 h-4 fill-current text-white shrink-0" />
-                            <span>Başlat ({targetWordsCount})</span>
+                            <span>Başlat · {targetWordsCount} kelime · ~{estimatedStudyMinutes} dk</span>
                           </button>
                         </div>
 
@@ -1486,8 +1744,138 @@ export default function App() {
         />
       )}
 
+      {isCollectionSheetOpen && (
+        <div className="fixed inset-0 z-[70] sm:hidden" role="dialog" aria-modal="true" aria-label="Koleksiyon seçimi">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default bg-slate-950/55 backdrop-blur-[2px]"
+            onClick={() => setIsCollectionSheetOpen(false)}
+            aria-label="Koleksiyon seçimini kapat"
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 flex max-h-[88dvh] flex-col overflow-hidden rounded-t-3xl border-t border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700" />
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <div>
+                <h2 className="font-display text-base font-black text-slate-900 dark:text-white">Koleksiyonları seç</h2>
+                <p className="text-[10px] font-semibold text-slate-400">{selectedListIds.length} liste · {targetWordsCount} kelime · ~{estimatedStudyMinutes} dk</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCollectionSheetOpen(false)}
+                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+                aria-label="Kapat"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="shrink-0 space-y-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              {selectedLists.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
+                  {selectedLists.map(list => (
+                    <button
+                      key={list.id}
+                      type="button"
+                      onClick={() => handleToggleListId(list.id)}
+                      className="flex min-h-9 shrink-0 cursor-pointer items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300"
+                    >
+                      <span>{list.name}</span>
+                      <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <label className="relative block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={collectionQuery}
+                  onChange={event => setCollectionQuery(event.target.value)}
+                  placeholder="Koleksiyon ara"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={collectionVisibility}
+                  onChange={event => setCollectionVisibility(event.target.value as typeof collectionVisibility)}
+                  aria-label="Koleksiyon filtresi"
+                  className="h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                >
+                  <option value="all">Tüm listeler</option>
+                  <option value="selected">Seçilenler</option>
+                  <option value="unselected">Seçilmeyenler</option>
+                </select>
+                <select
+                  value={collectionSort}
+                  onChange={event => setCollectionSort(event.target.value as typeof collectionSort)}
+                  aria-label="Koleksiyon sıralaması"
+                  className="h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                >
+                  <option value="default">Eklenme sırası</option>
+                  <option value="name-asc">Ad: A → Z</option>
+                  <option value="name-desc">Ad: Z → A</option>
+                  <option value="count-desc">Kelime: Çok → Az</option>
+                  <option value="count-asc">Kelime: Az → Çok</option>
+                </select>
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider">
+                <span className="text-slate-400">{filteredAndSortedLists.length} sonuç</span>
+                <div className="flex gap-3">
+                  <button type="button" onClick={handleSelectVisibleLists} className="cursor-pointer text-indigo-600 dark:text-indigo-400">Görünenleri seç</button>
+                  <button type="button" onClick={handleClearListSelection} className="cursor-pointer text-rose-500">Temizle</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto overscroll-contain px-4 py-3">
+              {filteredAndSortedLists.map(list => {
+                const isSelected = selectedListIds.includes(list.id);
+                return (
+                  <button
+                    key={list.id}
+                    type="button"
+                    onClick={() => handleToggleListId(list.id)}
+                    className={`flex min-h-12 min-w-0 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-bold transition-colors ${
+                      isSelected
+                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/35 dark:text-indigo-300'
+                        : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 dark:border-slate-700'}`}>
+                      {isSelected && <CheckCircle2 className="h-3 w-3" />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{list.name}</span>
+                    <span className="shrink-0 text-[9px] opacity-50">{listWordCounts[list.id] ?? 0}</span>
+                  </button>
+                );
+              })}
+              {filteredAndSortedLists.length === 0 && (
+                <div className="col-span-2 py-10 text-center text-xs font-semibold text-slate-400">Bu filtreye uygun koleksiyon bulunamadı.</div>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t border-slate-100 px-4 pt-3 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsCollectionSheetOpen(false)}
+                className="flex min-h-12 w-full cursor-pointer items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-md active:bg-indigo-700"
+              >
+                Bitti · {selectedListIds.length} liste
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'study' && !isStudying && (
-        <div className="fixed left-0 right-0 bottom-[68px] z-50 md:hidden px-4 pointer-events-none">
+        <div
+          className="fixed left-0 right-0 z-50 px-4 pointer-events-none md:hidden"
+          style={{ bottom: 'calc(68px + env(safe-area-inset-bottom))' }}
+        >
           <button
             type="button"
             onClick={handleStartStudy}
@@ -1495,7 +1883,7 @@ export default function App() {
             className="pointer-events-auto w-full max-w-md mx-auto flex items-center justify-center space-x-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-45 disabled:hover:bg-indigo-600 text-white font-display font-black uppercase tracking-wider py-3.5 px-5 rounded-2xl shadow-lg transition-all cursor-pointer text-xs disabled:cursor-not-allowed"
           >
             <Play className="w-4 h-4 fill-current text-white shrink-0" />
-            <span>Başlat ({targetWordsCount})</span>
+            <span>Başlat · {targetWordsCount} kelime · ~{estimatedStudyMinutes} dk</span>
           </button>
         </div>
       )}
