@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   History,
   Layers3,
@@ -13,6 +14,7 @@ import { StudyHistoryEntry } from '../types';
 interface StudyHistoryViewProps {
   entries: StudyHistoryEntry[];
   onClear: () => void;
+  onDelete: (entryId: string) => void;
 }
 
 const dateKey = (date: Date) => (
@@ -31,7 +33,7 @@ const getDayLabel = (date: Date) => {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
-    year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+    year: 'numeric',
   }).format(date);
 };
 
@@ -46,11 +48,15 @@ const getStudyTypeLabel = (entry: StudyHistoryEntry) => {
   return entry.quizMode ? `Quiz · ${quizLabels[entry.quizMode]}` : 'Quiz';
 };
 
-export default function StudyHistoryView({ entries, onClear }: StudyHistoryViewProps) {
+export default function StudyHistoryView({ entries, onClear, onDelete }: StudyHistoryViewProps) {
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const sortedEntries = [...entries].sort(
     (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime(),
   );
   const todayKey = dateKey(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = dateKey(yesterday);
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
   sevenDaysAgo.setHours(0, 0, 0, 0);
@@ -129,15 +135,26 @@ export default function StudyHistoryView({ entries, onClear }: StudyHistoryViewP
         </div>
       ) : (
         <div className="space-y-6">
-          {groupedEntries.map(group => (
+          {groupedEntries.map(group => {
+            const defaultExpanded = group.key === todayKey || group.key === yesterdayKey;
+            const isExpanded = expandedGroups[group.key] ?? defaultExpanded;
+
+            return (
             <section key={group.key}>
-              <div className="mb-2.5 flex items-center gap-2 px-1">
-                <CalendarDays className="h-4 w-4 text-indigo-500" />
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={`history-group-${group.key}`}
+                onClick={() => setExpandedGroups(current => ({ ...current, [group.key]: !isExpanded }))}
+                className="mb-2.5 flex w-full cursor-pointer items-center gap-2 rounded-xl px-1 py-1 text-left transition-colors hover:bg-slate-100/70 dark:hover:bg-slate-800/50"
+              >
+                <CalendarDays className="h-4 w-4 shrink-0 text-indigo-500" />
                 <h3 className="font-display text-xs font-black capitalize text-slate-700 dark:text-slate-200">{getDayLabel(group.date)}</h3>
                 <span className="text-[10px] font-semibold text-slate-400">· {group.entries.length} çalışma</span>
-              </div>
+                <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              </button>
 
-              <div className="space-y-2.5">
+              {isExpanded && <div id={`history-group-${group.key}`} className="space-y-2.5">
                 {group.entries.map(entry => {
                   const startedAt = new Date(entry.startedAt).getTime();
                   const completedAt = new Date(entry.completedAt).getTime();
@@ -186,13 +203,28 @@ export default function StudyHistoryView({ entries, onClear }: StudyHistoryViewP
                         ) : (
                           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />{entry.learnedCount ?? 0} öğrenilen</span>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Bu çalışma kaydını geçmişten silmek istediğinize emin misiniz?')) {
+                              onDelete(entry.id);
+                            }
+                          }}
+                          className="ml-auto flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-400"
+                          aria-label="Çalışma kaydını sil"
+                          title="Bu çalışma kaydını sil"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>Sil</span>
+                        </button>
                       </div>
                     </article>
                   );
                 })}
-              </div>
+              </div>}
             </section>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -31,7 +31,8 @@ import {
   LogOut,
   Volume2,
   VolumeX,
-  History
+  History,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -50,6 +51,7 @@ interface QuizAnswerSnapshot {
 }
 
 const STUDY_HISTORY_STORAGE_KEY = 'lexicards_study_history';
+const PRONUNCIATION_STORAGE_KEY = 'lexicards_pronunciation_enabled';
 
 export default function App() {
   const [lists, setLists] = useState<WordList[]>([]);
@@ -79,6 +81,9 @@ export default function App() {
   const [filterMode, setFilterMode] = useState<'all' | 'unlearned' | 'learned'>('all');
   const [studyType, setStudyType] = useState<'card' | 'quiz'>('card');
   const [quizMode, setQuizMode] = useState<'syn-to-word' | 'word-to-syn' | 'word-to-tr' | 'tr-to-word'>('syn-to-word');
+  const [collectionQuery, setCollectionQuery] = useState('');
+  const [collectionVisibility, setCollectionVisibility] = useState<'all' | 'selected' | 'unselected'>('all');
+  const [collectionSort, setCollectionSort] = useState<'default' | 'name-asc' | 'name-desc' | 'count-desc' | 'count-asc'>('default');
   
   // Active study states
   const [isStudying, setIsStudying] = useState(false);
@@ -86,7 +91,9 @@ export default function App() {
   const [sessionWords, setSessionWords] = useState<Word[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(true);
+  const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(
+    () => localStorage.getItem(PRONUNCIATION_STORAGE_KEY) !== 'false',
+  );
   const [quizAnswers, setQuizAnswers] = useState<Record<string, QuizAnswerSnapshot>>({});
   const [quizNavDirection, setQuizNavDirection] = useState<1 | -1>(1);
   const sessionStartedAtRef = React.useRef(new Date().toISOString());
@@ -114,6 +121,10 @@ export default function App() {
       loadDefaultData();
     }
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PRONUNCIATION_STORAGE_KEY, String(isPronunciationEnabled));
+  }, [isPronunciationEnabled]);
 
   const loadDefaultData = () => {
     const { lists: parsedLists, words: parsedWords } = parseCSV(defaultCSVData);
@@ -443,6 +454,18 @@ export default function App() {
     setStudyHistory([]);
   };
 
+  const handleDeleteStudyHistoryEntry = (entryId: string) => {
+    setStudyHistory(previousHistory => {
+      const nextHistory = previousHistory.filter(entry => entry.id !== entryId);
+      if (nextHistory.length > 0) {
+        localStorage.setItem(STUDY_HISTORY_STORAGE_KEY, JSON.stringify(nextHistory));
+      } else {
+        localStorage.removeItem(STUDY_HISTORY_STORAGE_KEY);
+      }
+      return nextHistory;
+    });
+  };
+
   const handleSetStatusOnActiveWord = (status: 'unmarked' | 'learned' | 'struggled') => {
     if (sessionWords.length === 0) return;
     const activeWord = sessionWords[currentIndex];
@@ -489,6 +512,40 @@ export default function App() {
     }
     return true;
   }).length;
+
+  const listWordCounts = words.reduce<Record<string, number>>((counts, word) => {
+    counts[word.listId] = (counts[word.listId] ?? 0) + 1;
+    return counts;
+  }, {});
+  const normalizedCollectionQuery = collectionQuery.trim().toLocaleLowerCase('tr-TR');
+  const filteredAndSortedLists = lists
+    .filter(list => {
+      const matchesQuery = list.name.toLocaleLowerCase('tr-TR').includes(normalizedCollectionQuery);
+      const isSelected = selectedListIds.includes(list.id);
+      const matchesVisibility = collectionVisibility === 'all'
+        || (collectionVisibility === 'selected' && isSelected)
+        || (collectionVisibility === 'unselected' && !isSelected);
+      return matchesQuery && matchesVisibility;
+    })
+    .sort((a, b) => {
+      if (collectionSort === 'name-asc') return a.name.localeCompare(b.name, 'tr-TR', { numeric: true });
+      if (collectionSort === 'name-desc') return b.name.localeCompare(a.name, 'tr-TR', { numeric: true });
+      if (collectionSort === 'count-desc') {
+        return (listWordCounts[b.id] ?? 0) - (listWordCounts[a.id] ?? 0)
+          || a.name.localeCompare(b.name, 'tr-TR', { numeric: true });
+      }
+      if (collectionSort === 'count-asc') {
+        return (listWordCounts[a.id] ?? 0) - (listWordCounts[b.id] ?? 0)
+          || a.name.localeCompare(b.name, 'tr-TR', { numeric: true });
+      }
+      return 0;
+    });
+
+  const handleSelectVisibleLists = () => {
+    setSelectedListIds(current => [
+      ...new Set([...current, ...filteredAndSortedLists.map(list => list.id)]),
+    ]);
+  };
 
   const handleCreateListSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -929,7 +986,7 @@ export default function App() {
                         {/* List utility toggles */}
                         <div className="flex items-center space-x-3.5 text-xs font-bold uppercase tracking-wider">
                           <button
-                            onClick={handleSelectAllLists}
+                            onClick={handleSelectVisibleLists}
                             className="text-indigo-600 hover:text-indigo-500 cursor-pointer transition-colors"
                           >
                             Tümünü Seç
@@ -971,6 +1028,43 @@ export default function App() {
                         </span>
                       </p>
 
+                      {lists.length > 0 && (
+                        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_150px_160px]">
+                          <label className="relative col-span-2 sm:col-span-1">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="search"
+                              value={collectionQuery}
+                              onChange={event => setCollectionQuery(event.target.value)}
+                              placeholder="Koleksiyonlarda ara"
+                              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-indigo-700"
+                            />
+                          </label>
+                          <select
+                            value={collectionVisibility}
+                            onChange={event => setCollectionVisibility(event.target.value as typeof collectionVisibility)}
+                            aria-label="Koleksiyon filtresi"
+                            className="h-10 min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                          >
+                            <option value="all">Tüm listeler</option>
+                            <option value="selected">Seçilenler</option>
+                            <option value="unselected">Seçilmeyenler</option>
+                          </select>
+                          <select
+                            value={collectionSort}
+                            onChange={event => setCollectionSort(event.target.value as typeof collectionSort)}
+                            aria-label="Koleksiyon sıralaması"
+                            className="h-10 min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                          >
+                            <option value="default">Eklenme sırası</option>
+                            <option value="name-asc">Ad: A → Z</option>
+                            <option value="name-desc">Ad: Z → A</option>
+                            <option value="count-desc">Kelime: Çok → Az</option>
+                            <option value="count-asc">Kelime: Az → Çok</option>
+                          </select>
+                        </div>
+                      )}
+
                       {/* Lists Grid - REDESIGNED PREMIUM VIEW */}
                       {lists.length === 0 ? (
                         <div className="flex-1 flex flex-col items-center justify-center py-16 text-center bg-slate-50/30 dark:bg-slate-950/20 rounded-2xl border-2 border-dashed border-slate-150 dark:border-slate-800">
@@ -978,10 +1072,25 @@ export default function App() {
                           <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Henüz hiçbir kelime koleksiyonu yok.</p>
                           <p className="text-xs text-slate-400 mt-1 max-w-sm">"İçe Aktar" sekmesinden hazır listeleri yükleyebilir veya hemen aşağıdan yeni bir koleksiyon oluşturabilirsiniz.</p>
                         </div>
+                      ) : filteredAndSortedLists.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-12 text-center dark:border-slate-800 dark:bg-slate-950/20">
+                          <Search className="mb-3 h-8 w-8 text-slate-300 dark:text-slate-700" />
+                          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Bu filtreye uygun koleksiyon bulunamadı.</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCollectionQuery('');
+                              setCollectionVisibility('all');
+                            }}
+                            className="mt-3 cursor-pointer text-xs font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                          >
+                            Filtreleri temizle
+                          </button>
+                        </div>
                       ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-                          {lists.map(list => {
-                            const wordCount = words.filter(w => w.listId === list.id).length;
+                          {filteredAndSortedLists.map(list => {
+                            const wordCount = listWordCounts[list.id] ?? 0;
                             const learnedCount = words.filter(w => w.listId === list.id && w.learned).length;
                             const struggledCount = words.filter(w => w.listId === list.id && (w.status === 'struggled')).length;
                             const isSelected = selectedListIds.includes(list.id);
@@ -1200,18 +1309,60 @@ export default function App() {
                         <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
                           <div className="flex items-center justify-between gap-2">
                             <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                              Koleksiyonlar
+                              Koleksiyonlar · {filteredAndSortedLists.length}
                             </label>
                             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
-                              <button type="button" onClick={handleSelectAllLists} className="text-indigo-650 dark:text-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors">Tümü</button>
+                              <button
+                                type="button"
+                                onClick={handleSelectVisibleLists}
+                                className="text-indigo-650 dark:text-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"
+                                title="Görünen koleksiyonları seç"
+                              >
+                                Tümü
+                              </button>
                               <button type="button" onClick={handleClearListSelection} className="text-slate-450 hover:text-indigo-600 cursor-pointer transition-colors">Temizle</button>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 max-h-[104px] sm:max-h-[116px] overflow-y-auto p-1.5 sm:p-2 bg-slate-50/50 dark:bg-slate-950/30 border border-slate-100 dark:border-slate-850/60 rounded-2xl scrollbar-thin">
-                            {lists.map(list => {
+                          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-[minmax(0,1fr)_120px_130px]">
+                            <label className="relative col-span-2 sm:col-span-1">
+                              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="search"
+                                value={collectionQuery}
+                                onChange={event => setCollectionQuery(event.target.value)}
+                                placeholder="Koleksiyon ara"
+                                className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2 text-[11px] font-semibold text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:focus:border-indigo-700"
+                              />
+                            </label>
+                            <select
+                              value={collectionVisibility}
+                              onChange={event => setCollectionVisibility(event.target.value as typeof collectionVisibility)}
+                              aria-label="Koleksiyon filtresi"
+                              className="h-8 min-w-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-600 outline-none focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                            >
+                              <option value="all">Tüm listeler</option>
+                              <option value="selected">Seçilenler</option>
+                              <option value="unselected">Seçilmeyenler</option>
+                            </select>
+                            <select
+                              value={collectionSort}
+                              onChange={event => setCollectionSort(event.target.value as typeof collectionSort)}
+                              aria-label="Koleksiyon sıralaması"
+                              className="h-8 min-w-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-600 outline-none focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                            >
+                              <option value="default">Eklenme sırası</option>
+                              <option value="name-asc">Ad: A → Z</option>
+                              <option value="name-desc">Ad: Z → A</option>
+                              <option value="count-desc">Kelime: Çok → Az</option>
+                              <option value="count-asc">Kelime: Az → Çok</option>
+                            </select>
+                          </div>
+
+                          <div className="grid max-h-[196px] grid-cols-2 gap-1.5 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/50 p-1.5 scrollbar-thin dark:border-slate-850/60 dark:bg-slate-950/30 sm:max-h-[116px] sm:grid-cols-3 sm:gap-2 sm:p-2">
+                            {filteredAndSortedLists.map(list => {
                               const isSelected = selectedListIds.includes(list.id);
-                              const listWordCount = words.filter(w => w.listId === list.id).length;
+                              const listWordCount = listWordCounts[list.id] ?? 0;
                               return (
                                 <button
                                   key={list.id}
@@ -1233,6 +1384,11 @@ export default function App() {
                                 </button>
                               );
                             })}
+                            {filteredAndSortedLists.length === 0 && (
+                              <div className="col-span-full px-3 py-6 text-center text-[11px] font-semibold text-slate-400">
+                                Bu filtreye uygun koleksiyon bulunamadı.
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1273,7 +1429,11 @@ export default function App() {
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
                   >
-                    <StudyHistoryView entries={studyHistory} onClear={handleClearStudyHistory} />
+                    <StudyHistoryView
+                      entries={studyHistory}
+                      onClear={handleClearStudyHistory}
+                      onDelete={handleDeleteStudyHistoryEntry}
+                    />
                   </motion.div>
                 )}
 
