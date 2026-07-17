@@ -13,6 +13,21 @@ export default function CSVImporter({ onImport }: CSVImporterProps) {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const readImportFile = async (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (extension === 'xlsx') {
+      const { default: readXlsxFile } = await import('read-excel-file/browser');
+      const sheets = await readXlsxFile(file);
+      const rows = sheets[0]?.data || [];
+      return rows.map(row => row
+        .map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`)
+        .join(','))
+        .join('\n');
+    }
+    if (extension === 'csv' || extension === 'txt') return file.text();
+    throw new Error('Lütfen CSV, TXT veya XLSX dosyası yükleyin.');
+  };
+
   const processImportText = (text: string) => {
     try {
       if (!text.trim()) {
@@ -46,19 +61,14 @@ export default function CSVImporter({ onImport }: CSVImporterProps) {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      processImportText(text);
-    };
-    reader.onerror = () => {
-      setStatusMessage({ type: 'error', text: 'Dosya okunurken bir hata oluştu.' });
-    };
-    reader.readAsText(file, 'UTF-8');
+    try {
+      processImportText(await readImportFile(file));
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : 'Dosya okunurken bir hata oluştu.' });
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -70,24 +80,18 @@ export default function CSVImporter({ onImport }: CSVImporterProps) {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
-      setStatusMessage({ type: 'error', text: 'Lütfen sadece .csv veya .txt dosyası yükleyin.' });
-      return;
+    try {
+      processImportText(await readImportFile(file));
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error instanceof Error ? error.message : 'Dosya okunurken bir hata oluştu.' });
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      processImportText(text);
-    };
-    reader.readAsText(file, 'UTF-8');
   };
 
   return (
@@ -118,12 +122,12 @@ export default function CSVImporter({ onImport }: CSVImporterProps) {
               type="file"
               ref={fileInputRef}
               onChange={handleFileUpload}
-              accept=".csv,.txt"
+              accept=".csv,.txt,.xlsx"
               className="hidden"
             />
             <Upload className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
             <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">CSV veya Excel Dosyası Sürükleyin</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Veya bilgisayarınızdan seçmek için tıklayın (.csv, .txt)</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Veya bilgisayarınızdan seçmek için tıklayın (.csv, .txt, .xlsx)</p>
           </div>
 
           <div className="relative flex items-center justify-center my-4">

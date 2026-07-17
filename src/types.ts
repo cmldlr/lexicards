@@ -37,4 +37,27 @@ export interface StudyHistoryEntry {
   wrong?: number;
   unanswered?: number;
   learnedCount?: number;
+  sourceType?: 'vocabulary' | 'combinations';
+  combinationMode?: 'cards' | 'completion';
+}
+
+export interface CombinationCollection {
+  id: string;
+  name: string;
+  fileName: string;
+  importedAt: string;
+}
+
+export interface CommonCombination {
+  id: string;
+  collectionId: string;
+  family: 'verb' | 'adjective' | 'noun' | 'prep-noun' | 'other';
+  section: string;
+  pattern: string;
+  expression: string;
+  meaning: string;
+  answer: string;
+  acceptedAnswers: string[];
+  clozePrompt: string;
+  status: 'unmarked' | 'learned' | 'struggled';
 }

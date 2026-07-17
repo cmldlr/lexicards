@@ -15,6 +15,7 @@ interface CardViewProps {
   currentIndex: number;
   totalCount: number;
   pronunciationEnabled: boolean;
+  displayVariant?: 'default' | 'combination';
 }
 
 export default function CardView({
@@ -27,7 +28,8 @@ export default function CardView({
   onSetStatus,
   currentIndex,
   totalCount,
-  pronunciationEnabled
+  pronunciationEnabled,
+  displayVariant = 'default'
 }: CardViewProps) {
   const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -115,39 +117,39 @@ export default function CardView({
 
   return (
     <div
-      className="w-full max-w-md mx-auto flex flex-col items-center px-2 select-none"
+      className={`mx-auto flex w-full max-w-md flex-col items-center px-2 select-none ${displayVariant === 'combination' ? 'h-full min-h-0' : ''}`}
       style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
     >
       {/* Study snapshot */}
-      <div className="w-full mb-3 space-y-2.5">
-        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+      <div className={`w-full shrink-0 ${displayVariant === 'combination' ? 'mb-2 space-y-1.5' : 'mb-3 space-y-2.5'}`}>
+        <div className={`items-center justify-between font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 ${displayVariant === 'combination' ? 'hidden text-[8px]' : 'flex text-[9px]'}`}>
           <span>KART {currentIndex + 1} / {totalCount}</span>
           <span>Durum özeti</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800 flex">
+        <div className={`${displayVariant === 'combination' ? 'h-1' : 'h-1.5'} w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800 flex`}>
           <div className="h-full bg-emerald-500 transition-all" style={{ width: `${learnedPercent}%` }} />
           <div className="h-full bg-rose-500 transition-all" style={{ width: `${struggledPercent}%` }} />
           <div className="h-full bg-indigo-500 transition-all" style={{ width: `${pendingPercent}%` }} />
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-2 py-2.5 text-center shadow-3xs">
-            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Öğrendim</div>
-            <div className="mt-0.5 text-base font-display font-black text-emerald-600 dark:text-emerald-400">{learnedCount}<span className="mx-0.5 text-[10px] text-emerald-500/70">/</span><span className="text-xs">{activeWords.length}</span></div>
+        <div className={displayVariant === 'combination' ? 'grid grid-cols-3 divide-x divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white p-1 shadow-xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900' : 'grid grid-cols-3 gap-2'}>
+          <div className={displayVariant === 'combination' ? 'px-2 py-1 text-center' : 'rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-2 py-2.5 text-center shadow-3xs'}>
+            <div className={`${displayVariant === 'combination' ? 'text-[8px]' : 'text-[8px] sm:text-[9px]'} font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400`}>Öğrendim</div>
+            <div className={`${displayVariant === 'combination' ? 'text-sm' : 'mt-0.5 text-base'} font-display font-black text-emerald-600 dark:text-emerald-400`}>{learnedCount}<span className="mx-0.5 text-[9px] text-emerald-500/70">/</span><span className="text-[10px]">{activeWords.length}</span></div>
           </div>
-          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-2 py-2.5 text-center shadow-3xs">
-            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">Öğrenemedim</div>
-            <div className="mt-0.5 text-base font-display font-black text-rose-600 dark:text-rose-400">{struggledCount}<span className="mx-0.5 text-[10px] text-rose-500/70">/</span><span className="text-xs">{activeWords.length}</span></div>
+          <div className={displayVariant === 'combination' ? 'px-2 py-1 text-center' : 'rounded-2xl border border-rose-500/20 bg-rose-500/10 px-2 py-2.5 text-center shadow-3xs'}>
+            <div className={`${displayVariant === 'combination' ? 'text-[8px]' : 'text-[8px] sm:text-[9px]'} font-black uppercase tracking-wider text-rose-600 dark:text-rose-400`}>Öğrenemedim</div>
+            <div className={`${displayVariant === 'combination' ? 'text-sm' : 'mt-0.5 text-base'} font-display font-black text-rose-600 dark:text-rose-400`}>{struggledCount}<span className="mx-0.5 text-[9px] text-rose-500/70">/</span><span className="text-[10px]">{activeWords.length}</span></div>
           </div>
-          <div className="rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-2 py-2.5 text-center shadow-3xs">
-            <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Çalışılmayan</div>
-            <div className="mt-0.5 text-base font-display font-black text-indigo-500 dark:text-indigo-400">{pendingCount}<span className="mx-0.5 text-[10px] text-indigo-500/70">/</span><span className="text-xs">{activeWords.length}</span></div>
+          <div className={displayVariant === 'combination' ? 'px-2 py-1 text-center' : 'rounded-2xl border border-indigo-500/20 bg-indigo-500/10 px-2 py-2.5 text-center shadow-3xs'}>
+            <div className={`${displayVariant === 'combination' ? 'text-[8px]' : 'text-[8px] sm:text-[9px]'} font-black uppercase tracking-wider text-indigo-500 dark:text-indigo-400`}>Çalışılmayan</div>
+            <div className={`${displayVariant === 'combination' ? 'text-sm' : 'mt-0.5 text-base'} font-display font-black text-indigo-500 dark:text-indigo-400`}>{pendingCount}<span className="mx-0.5 text-[9px] text-indigo-500/70">/</span><span className="text-[10px]">{activeWords.length}</span></div>
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_1.2fr_1fr] gap-2">
+        <div className={displayVariant === 'combination' ? 'grid grid-cols-[1fr_1.2fr_1fr] divide-x divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900' : 'grid grid-cols-[1fr_1.2fr_1fr] gap-2'}>
           <button
             onClick={onPrev}
             disabled={!previousWord}
-            className="min-w-0 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white/70 dark:bg-slate-900/80 px-2 py-2 text-left disabled:opacity-35 disabled:cursor-default cursor-pointer"
+            className={`min-w-0 px-2 text-left disabled:opacity-35 disabled:cursor-default cursor-pointer ${displayVariant === 'combination' ? 'min-h-11 bg-transparent py-1.5' : 'rounded-xl border border-slate-200/60 bg-white/70 py-2 dark:border-slate-800 dark:bg-slate-900/80'}`}
           >
             <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
               <ChevronLeft className="w-3 h-3" />
@@ -155,14 +157,14 @@ export default function CardView({
             </div>
             <div className="truncate text-[11px] font-black text-slate-700 dark:text-slate-250">{previousWord?.term || '-'}</div>
           </button>
-          <div className="min-w-0 rounded-xl border border-indigo-500/25 bg-indigo-500/10 px-2 py-2 text-center">
+          <div className={`min-w-0 px-2 text-center ${displayVariant === 'combination' ? 'min-h-11 bg-indigo-50/70 py-1.5 dark:bg-indigo-950/25' : 'rounded-xl border border-indigo-500/25 bg-indigo-500/10 py-2'}`}>
             <div className="text-[8px] font-black uppercase tracking-wider text-indigo-400">Şu anki</div>
             <div className="truncate text-xs font-display font-black text-slate-950 dark:text-white">{word.term}</div>
           </div>
           <button
             onClick={onNext}
             disabled={!nextWord}
-            className="min-w-0 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white/70 dark:bg-slate-900/80 px-2 py-2 text-right disabled:opacity-35 disabled:cursor-default cursor-pointer"
+            className={`min-w-0 px-2 text-right disabled:opacity-35 disabled:cursor-default cursor-pointer ${displayVariant === 'combination' ? 'min-h-11 bg-transparent py-1.5' : 'rounded-xl border border-slate-200/60 bg-white/70 py-2 dark:border-slate-800 dark:bg-slate-900/80'}`}
           >
             <div className="flex items-center justify-end gap-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
               <span>Sonraki</span>
@@ -175,8 +177,8 @@ export default function CardView({
 
       {/* 3D Card Container with Perspective */}
       <div
-        className="relative w-full min-h-[330px] perspective-1000 touch-pan-y select-none"
-        style={{ height: 'clamp(330px, 48dvh, 460px)', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
+        className={`relative w-full perspective-1000 touch-pan-y select-none ${displayVariant === 'combination' ? 'min-h-[250px] flex-1' : 'min-h-[330px]'}`}
+        style={{ height: displayVariant === 'combination' ? undefined : 'clamp(330px, 48dvh, 460px)', maxHeight: displayVariant === 'combination' ? '480px' : undefined, userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties}
       >
         <motion.div
           drag="x"
@@ -220,7 +222,7 @@ export default function CardView({
             {/* FRONT SIDE (English Term) */}
             <div 
               onClick={handleContainerClick}
-              className={`absolute inset-0 w-full h-full rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 p-5 sm:p-8 flex flex-col justify-between backface-hidden shadow-xs hover:shadow-md transition-shadow duration-200 cursor-pointer ${isFlipped ? 'pointer-events-none' : 'pointer-events-auto'}`}
+              className={`absolute inset-0 w-full h-full rounded-3xl bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 flex flex-col justify-between backface-hidden shadow-xs hover:shadow-md transition-shadow duration-200 cursor-pointer ${displayVariant === 'combination' ? 'p-4 sm:p-5' : 'p-5 sm:p-8'} ${isFlipped ? 'pointer-events-none' : 'pointer-events-auto'}`}
               style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
             >
               {/* Card top badges */}
@@ -289,6 +291,38 @@ export default function CardView({
               className={`absolute inset-0 w-full h-full rounded-3xl bg-slate-50/50 dark:bg-slate-950 border-2 border-slate-150/50 dark:border-slate-800/80 p-4 sm:p-6 flex flex-col justify-between rotate-y-180 backface-hidden overflow-hidden shadow-xs hover:shadow-md transition-shadow duration-200 cursor-pointer ${isFlipped ? 'pointer-events-auto' : 'pointer-events-none'}`}
               style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
             >
+              {displayVariant === 'combination' ? (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-200/50 pb-3 dark:border-slate-850">
+                    <span className="min-w-0 truncate text-sm font-display font-black text-slate-800 dark:text-slate-100 sm:text-base">
+                      {word.term}
+                    </span>
+                    <button
+                      onClick={handlePronounce}
+                      disabled={!pronunciationEnabled}
+                      className={`ml-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+                        pronunciationEnabled
+                          ? 'cursor-pointer bg-indigo-50 text-indigo-650 hover:bg-indigo-100 dark:bg-slate-900 dark:text-indigo-400'
+                          : 'cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-650'
+                      }`}
+                      title={pronunciationEnabled ? 'Sesli Telaffuz' : 'Telaffuz kapalı'}
+                    >
+                      {pronunciationEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-1 items-center justify-center px-2 py-8 text-center">
+                    <p className="max-w-full break-words text-2xl font-display font-black leading-snug text-slate-950 [overflow-wrap:anywhere] dark:text-white sm:text-3xl">
+                      {word.turkishMeanings.join(', ')}
+                    </p>
+                  </div>
+
+                  <div className="border-t border-slate-200/55 pt-3 text-center text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:border-slate-850 dark:text-slate-550 sm:text-[10px]">
+                    Kartı geri çevirmek için tıkla
+                  </div>
+                </>
+              ) : (
+                <>
               {/* Back Top header */}
               <div className="flex justify-between items-center border-b border-slate-200/50 dark:border-slate-850 pb-2 sm:pb-3">
                 <div className="flex items-center space-x-2">
@@ -369,15 +403,17 @@ export default function CardView({
               <div className="text-center text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-550 pt-2 border-t border-slate-200/55 dark:border-slate-850">
                 Kartı geri çevirmek için tıkla
               </div>
+                </>
+              )}
             </div>
           </motion.div>
         </motion.div>
       </div>
 
       {/* Button Controls beneath the Card */}
-      <div className="w-full flex flex-col items-center mt-3 sm:mt-5 space-y-2.5 sm:space-y-3">
+      <div className={displayVariant === 'combination' ? 'mt-2 flex w-full shrink-0 flex-col items-center space-y-2' : 'mt-3 flex w-full flex-col items-center space-y-2.5 sm:mt-5 sm:space-y-3'}>
         {/* Dual Status Buttons - Optimized for mobile tap targets */}
-        <div className="w-full grid grid-cols-2 gap-2.5 sm:gap-3">
+        <div className={displayVariant === 'combination' ? 'grid w-full grid-cols-2 gap-2' : 'grid w-full grid-cols-2 gap-2.5 sm:gap-3'}>
           {/* Struggled Button */}
           {(() => {
             const currentStatus = word.status || (word.learned ? 'learned' : 'unmarked');
@@ -385,7 +421,7 @@ export default function CardView({
             return (
               <button
                 onClick={() => onSetStatus(isStruggled ? 'unmarked' : 'struggled')}
-                className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl font-bold uppercase tracking-wider text-[10px] sm:text-[11px] cursor-pointer transition-all duration-200 flex items-center justify-center space-x-1.5 border shadow-3xs hover:shadow-xs active:scale-99 ${
+                className={`${displayVariant === 'combination' ? 'min-h-12 gap-1.5 rounded-xl px-2 py-2.5 text-[10px]' : 'rounded-2xl px-3 py-2.5 text-[10px] sm:px-4 sm:py-3 sm:text-[11px] space-x-1.5'} font-bold uppercase tracking-wider cursor-pointer transition-all duration-200 flex items-center justify-center border shadow-3xs hover:shadow-xs active:scale-99 ${
                   isStruggled
                     ? 'bg-rose-600 hover:bg-rose-500 text-white border-transparent'
                     : 'bg-white hover:bg-rose-50/20 text-rose-650 border-slate-200/60 dark:bg-slate-900 dark:border-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/20'
@@ -404,7 +440,7 @@ export default function CardView({
             return (
               <button
                 onClick={() => onSetStatus(isLearned ? 'unmarked' : 'learned')}
-                className={`py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl font-bold uppercase tracking-wider text-[10px] sm:text-[11px] cursor-pointer transition-all duration-200 flex items-center justify-center space-x-1.5 border shadow-3xs hover:shadow-xs active:scale-99 ${
+                className={`${displayVariant === 'combination' ? 'min-h-12 gap-1.5 rounded-xl px-2 py-2.5 text-[10px]' : 'rounded-2xl px-3 py-2.5 text-[10px] sm:px-4 sm:py-3 sm:text-[11px] space-x-1.5'} font-bold uppercase tracking-wider cursor-pointer transition-all duration-200 flex items-center justify-center border shadow-3xs hover:shadow-xs active:scale-99 ${
                   isLearned
                     ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-transparent'
                     : 'bg-white hover:bg-emerald-50/20 text-emerald-650 border-slate-200/60 dark:bg-slate-900 dark:border-slate-800 dark:text-emerald-400 dark:hover:bg-emerald-950/20'
@@ -418,17 +454,17 @@ export default function CardView({
         </div>
 
         {/* Previous / Next Navigation Arrows */}
-        <div className="w-full grid grid-cols-2 gap-2.5 sm:gap-3">
+        <div className={displayVariant === 'combination' ? 'grid w-full grid-cols-2 gap-2' : 'grid w-full grid-cols-2 gap-2.5 sm:gap-3'}>
           <button
             onClick={onPrev}
-            className="flex items-center justify-center space-x-1 py-2.5 sm:py-3 px-3 sm:px-4 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-250 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-3xs transition-all active:scale-99 cursor-pointer text-[11px] sm:text-xs uppercase tracking-wider font-bold"
+            className={`flex items-center justify-center bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-250 border border-slate-200/60 dark:border-slate-800 shadow-3xs transition-all active:scale-99 cursor-pointer uppercase tracking-wider font-bold ${displayVariant === 'combination' ? 'min-h-12 gap-1 rounded-xl px-2 py-2.5 text-[10px]' : 'space-x-1 rounded-2xl px-3 py-2.5 text-[11px] sm:px-4 sm:py-3 sm:text-xs'}`}
           >
             <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-450" />
             <span>Önceki</span>
           </button>
           <button
             onClick={onNext}
-            className="flex items-center justify-center space-x-1 py-2.5 sm:py-3 px-3 sm:px-4 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-250 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-3xs transition-all active:scale-99 cursor-pointer text-[11px] sm:text-xs uppercase tracking-wider font-bold"
+            className={`flex items-center justify-center bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-250 border border-slate-200/60 dark:border-slate-800 shadow-3xs transition-all active:scale-99 cursor-pointer uppercase tracking-wider font-bold ${displayVariant === 'combination' ? 'min-h-12 gap-1 rounded-xl px-2 py-2.5 text-[10px]' : 'space-x-1 rounded-2xl px-3 py-2.5 text-[11px] sm:px-4 sm:py-3 sm:text-xs'}`}
           >
             <span>{currentIndex < totalCount - 1 ? 'Sonraki' : 'Çalışmayı Bitir'}</span>
             <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-450" />

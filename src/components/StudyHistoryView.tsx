@@ -38,6 +38,9 @@ const getDayLabel = (date: Date) => {
 };
 
 const getStudyTypeLabel = (entry: StudyHistoryEntry) => {
+  if (entry.sourceType === 'combinations') {
+    return entry.combinationMode === 'completion' ? 'Kalıp · Boşluk tamamlama' : 'Kalıp · Kart çalışması';
+  }
   if (entry.studyType === 'card') return 'Kart çalışması';
   const quizLabels: Record<NonNullable<StudyHistoryEntry['quizMode']>, string> = {
     'syn-to-word': 'Syn → Kelime',
@@ -166,6 +169,9 @@ export default function StudyHistoryView({ entries, onClear, onDelete }: StudyHi
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{getStudyTypeLabel(entry)}</span>
+                            <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${entry.sourceType === 'combinations' ? 'bg-violet-50 text-violet-600 dark:bg-violet-950/35 dark:text-violet-300' : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/35 dark:text-indigo-300'}`}>
+                              {entry.sourceType === 'combinations' ? 'Kalıplar' : 'Kelimeler'}
+                            </span>
                             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                               {entry.studyMode === 'shuffled' ? 'Karışık' : 'Sıralı'}
                             </span>
@@ -173,7 +179,7 @@ export default function StudyHistoryView({ entries, onClear, onDelete }: StudyHi
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-slate-400">
                             <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" />{new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(new Date(entry.completedAt))}</span>
                             <span>{durationMinutes} dk.</span>
-                            <span>{entry.wordCount} kelime</span>
+                            <span>{entry.wordCount} {entry.sourceType === 'combinations' ? 'kalıp' : 'kelime'}</span>
                           </div>
                         </div>
                         <div className="shrink-0 text-right">

@@ -1,13 +1,15 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { StudyHistoryEntry, Word, WordList } from './types';
-import { parseCSV, defaultCSVData, speakWord } from './utils';
+import { speakWord } from './utils';
+import { getBundledVocabularySnapshot } from './seedData';
 import StatsView from './components/StatsView';
-import CSVImporter from './components/CSVImporter';
 import CardView from './components/CardView';
 import QuizView from './components/QuizView';
 import WordExplorer from './components/WordExplorer';
 import ListInspectorModal from './components/ListInspectorModal';
 import StudyHistoryView from './components/StudyHistoryView';
+import CommonCombinationsView from './components/CommonCombinationsView';
+import StudyModeSwitch from './components/StudyModeSwitch';
 import { 
   BookOpen, 
   RotateCcw, 
@@ -33,7 +35,6 @@ import {
   VolumeX,
   History,
   Search,
-  ChevronDown,
   MoreVertical,
   X,
   Vibrate
@@ -46,6 +47,9 @@ interface QuizChoiceSnapshot {
   synonyms: string;
   turkishMeanings: string[];
 }
+
+type AppTab = 'collections' | 'study' | 'history' | 'library';
+type ContentType = 'vocabulary' | 'combinations';
 
 interface QuizAnswerSnapshot {
   choices: QuizChoiceSnapshot[];
@@ -74,6 +78,27 @@ const PRONUNCIATION_STORAGE_KEY = 'lexicards_pronunciation_enabled';
 const HAPTICS_STORAGE_KEY = 'lexicards_haptics_enabled';
 const ACTIVE_STUDY_STORAGE_KEY = 'lexicards_active_study';
 const ACTIVE_TAB_STORAGE_KEY = 'lexicards_active_tab';
+
+function ContentTypeSwitch({ value, onChange }: { value: ContentType; onChange: (value: ContentType) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-2xl border border-slate-200/70 bg-slate-100/80 p-1 dark:border-slate-800 dark:bg-slate-900/80">
+      <button
+        type="button"
+        onClick={() => onChange('vocabulary')}
+        className={`flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-xs font-black transition ${value === 'vocabulary' ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-800 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}
+      >
+        <BookOpen className="h-4 w-4" /> Kelime listeleri
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('combinations')}
+        className={`flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-xs font-black transition ${value === 'combinations' ? 'bg-white text-violet-600 shadow-sm dark:bg-slate-800 dark:text-violet-400' : 'text-slate-500 dark:text-slate-400'}`}
+      >
+        <Sparkles className="h-4 w-4" /> Common Combinations
+      </button>
+    </div>
+  );
+}
 
 const loadPersistedStudySession = (): PersistedStudySession | null => {
   try {
@@ -118,11 +143,11 @@ export default function App() {
   });
   
   // Tab state
-  const [activeTab, setActiveTab] = useState<'collections' | 'study' | 'history' | 'library' | 'import'>(() => {
+  const [activeTab, setActiveTab] = useState<AppTab>(() => {
     if (restoredStudySession) return 'study';
     const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
-    return savedTab && ['collections', 'study', 'history', 'library', 'import'].includes(savedTab)
-      ? savedTab as 'collections' | 'study' | 'history' | 'library' | 'import'
+    return savedTab && ['collections', 'study', 'history', 'library'].includes(savedTab)
+      ? savedTab as AppTab
       : 'collections';
   });
   
@@ -135,7 +160,10 @@ export default function App() {
   const [collectionQuery, setCollectionQuery] = useState('');
   const [collectionVisibility, setCollectionVisibility] = useState<'all' | 'selected' | 'unselected'>('all');
   const [collectionSort, setCollectionSort] = useState<'default' | 'name-asc' | 'name-desc' | 'count-desc' | 'count-asc'>('default');
-  const [isSessionSettingsExpanded, setIsSessionSettingsExpanded] = useState(false);
+  const [collectionsContentType, setCollectionsContentType] = useState<ContentType>('vocabulary');
+  const [studyContentType, setStudyContentType] = useState<ContentType>('vocabulary');
+  const [isCombinationStudying, setIsCombinationStudying] = useState(false);
+  const [libraryContentType, setLibraryContentType] = useState<ContentType>('vocabulary');
   const [isCollectionSheetOpen, setIsCollectionSheetOpen] = useState(false);
   const [isMobileHeaderMenuOpen, setIsMobileHeaderMenuOpen] = useState(false);
   
@@ -164,7 +192,8 @@ export default function App() {
   const [inspectingListId, setInspectingListId] = useState<string | null>(null);
   const [newListName, setNewListName] = useState('');
 
-  // Load from LocalStorage or Fallback to embedded default Day 19-26 CSV
+  // Bundled data is merged into LocalStorage before React starts. Existing
+  // progress and custom lists remain intact across production deployments.
   useEffect(() => {
     const savedLists = localStorage.getItem('vocab_lists');
     const savedWords = localStorage.getItem('vocab_words');
@@ -193,6 +222,19 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    const refreshStudyHistory = () => {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(STUDY_HISTORY_STORAGE_KEY) || '[]');
+        setStudyHistory(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setStudyHistory([]);
+      }
+    };
+    window.addEventListener('lexicards:history-updated', refreshStudyHistory);
+    return () => window.removeEventListener('lexicards:history-updated', refreshStudyHistory);
+  }, []);
 
   useEffect(() => {
     if (!isStudying || isCompleted || sessionWords.length === 0) {
@@ -257,19 +299,19 @@ export default function App() {
   }, [isCollectionSheetOpen]);
 
   const loadDefaultData = () => {
-    const { lists: parsedLists, words: parsedWords } = parseCSV(defaultCSVData);
+    const { lists: parsedLists, words: parsedWords } = getBundledVocabularySnapshot();
     setLists(parsedLists);
     setWords(parsedWords);
     saveToLocalStorage(parsedLists, parsedWords);
     
-    // Auto-select Day 19 on first launch
+    // Auto-select the first bundled list on first launch/reset.
     if (parsedLists.length > 0) {
       setSelectedListIds([parsedLists[0].id]);
     }
   };
 
   const handleResetToDefaults = () => {
-    if (confirm('Verilerinizi ilk günkü varsayılan kelimelere (Day 19-26) döndürmek istiyor musunuz?')) {
+    if (confirm('Kelime verilerinizi varsayılan Day 1-55 listelerine döndürmek istiyor musunuz? Öğrenme durumlarınız sıfırlanır.')) {
       loadDefaultData();
     }
     setIsMobileHeaderMenuOpen(false);
@@ -302,41 +344,12 @@ export default function App() {
     setLoginPassword('');
   };
 
-  const handleTabChange = (tab: 'collections' | 'study' | 'history' | 'library' | 'import') => {
+  const handleTabChange = (tab: AppTab) => {
     setIsStudying(false);
     setInspectingListId(null);
     setIsCollectionSheetOpen(false);
     setIsMobileHeaderMenuOpen(false);
     setActiveTab(tab);
-  };
-
-  // Import Handler
-  const handleImport = (newLists: WordList[], newWords: Word[]) => {
-    // Merge lists by checking existing ID
-    const mergedLists = [...lists];
-    newLists.forEach(nl => {
-      if (!mergedLists.some(ol => ol.id === nl.id)) {
-        mergedLists.push(nl);
-      }
-    });
-
-    // Merge words by replacing existing terms if they overlap in the same list
-    const mergedWords = [...words];
-    newWords.forEach(nw => {
-      const existingIdx = mergedWords.findIndex(ow => ow.listId === nw.listId && ow.term.toLowerCase() === nw.term.toLowerCase());
-      if (existingIdx > -1) {
-        mergedWords[existingIdx] = nw; // update with newer record
-      } else {
-        mergedWords.push(nw);
-      }
-    });
-
-    setLists(mergedLists);
-    setWords(mergedWords);
-    saveToLocalStorage(mergedLists, mergedWords);
-
-    // Auto-select newly imported lists
-    setSelectedListIds(newLists.map(l => l.id));
   };
 
   // Word CRUD & Status toggles
@@ -535,6 +548,7 @@ export default function App() {
       startedAt: sessionStartedAtRef.current,
       completedAt: new Date().toISOString(),
       lists: sessionListSnapshotRef.current,
+      sourceType: 'vocabulary',
       studyType,
       studyMode,
       filterMode,
@@ -1082,12 +1096,12 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className={`flex-1 max-w-4xl w-full mx-auto px-4 py-6 md:py-8 md:pb-12 ${activeTab === 'study' ? 'pb-36' : 'pb-24'}`}>
+      <main className={`flex-1 max-w-4xl w-full mx-auto px-3 sm:px-4 ${activeTab === 'study' ? 'py-3 pb-36 md:py-8 md:pb-12' : 'py-6 pb-24 md:py-8 md:pb-12'}`}>
         
         {/* ================= VIEW 1: TABBED WEB APPLICATION INTERFACE ================= */}
         <div className="space-y-6">
               {/* Responsive Desktop Top Tabs Switcher */}
-              <div className="hidden md:flex items-center justify-center p-1 bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/40 dark:border-slate-800/80 rounded-2xl max-w-xl mx-auto mb-6">
+              <div className="hidden md:flex items-center justify-center p-1 bg-slate-100/80 dark:bg-slate-900/80 border border-slate-200/40 dark:border-slate-800/80 rounded-2xl max-w-3xl mx-auto mb-6">
                 <button
                   onClick={() => handleTabChange('collections')}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -1097,7 +1111,7 @@ export default function App() {
                   }`}
                 >
                   <FolderOpen className="w-4 h-4" />
-                  <span>Koleksiyonlar ({lists.length})</span>
+                  <span>Koleksiyonlar</span>
                 </button>
                 <button
                   onClick={() => handleTabChange('study')}
@@ -1130,18 +1144,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen className="w-4 h-4" />
-                  <span>Kütüphane ({words.length})</span>
-                </button>
-                <button
-                  onClick={() => handleTabChange('import')}
-                  className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    activeTab === 'import'
-                      ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-150/50 dark:border-slate-750/50'
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-450 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <Layers className="w-4 h-4" />
-                  <span>İçe Aktar</span>
+                  <span>Kütüphane</span>
                 </button>
               </div>
 
@@ -1156,6 +1159,9 @@ export default function App() {
                     transition={{ duration: 0.15 }}
                     className="space-y-6"
                   >
+                    <ContentTypeSwitch value={collectionsContentType} onChange={setCollectionsContentType} />
+                    {collectionsContentType === 'vocabulary' ? (
+                    <>
                     {/* Collections Tab Content */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-3xl p-6 shadow-xs flex flex-col">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 dark:border-slate-850 pb-4 mb-4 gap-3">
@@ -1394,6 +1400,10 @@ export default function App() {
                         </button>
                       </form>
                     </div>
+                    </>
+                    ) : (
+                      <CommonCombinationsView view="collections" />
+                    )}
                   </motion.div>
                 )}
 
@@ -1406,6 +1416,9 @@ export default function App() {
                      transition={{ duration: 0.15 }}
                      className="space-y-3 sm:space-y-6"
                   >
+                     {!isCombinationStudying && <ContentTypeSwitch value={studyContentType} onChange={setStudyContentType} />}
+                     {studyContentType === 'vocabulary' ? (
+                     <>
                      {/* Stat Bento Box Row */}
                      <StatsView 
                        words={words} 
@@ -1425,30 +1438,10 @@ export default function App() {
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">{targetWordsCount} kelime hazır</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1 rounded-full">
-                              {selectedListIds.length} liste
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setIsSessionSettingsExpanded(current => !current)}
-                              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-colors active:bg-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 sm:hidden"
-                              aria-expanded={isSessionSettingsExpanded}
-                              aria-label={isSessionSettingsExpanded ? 'Seans ayarlarını daralt' : 'Seans ayarlarını aç'}
-                            >
-                              <ChevronDown className={`h-4 w-4 transition-transform ${isSessionSettingsExpanded ? 'rotate-180' : ''}`} />
-                            </button>
+                          <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 px-2.5 py-1 rounded-full">
+                            {selectedListIds.length} liste
                           </div>
                         </div>
-
-                        {!isSessionSettingsExpanded && (
-                          <div className="flex flex-wrap gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-500 sm:hidden">
-                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{studyMode === 'shuffled' ? 'Karışık' : 'Sıralı'}</span>
-                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{filterMode === 'all' ? 'Tümü' : filterMode === 'learned' ? 'Öğrenilen' : 'Öğrenilmeyen'}</span>
-                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">{studyType === 'quiz' ? 'Quiz' : 'Kart'}</span>
-                            <span className="rounded-md bg-slate-100 px-2 py-1 dark:bg-slate-800">Titreşim {isHapticsEnabled ? 'açık' : 'kapalı'}</span>
-                          </div>
-                        )}
 
                         <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 shadow-inner shadow-slate-100/40 dark:border-slate-800 dark:bg-slate-950/35 dark:shadow-none sm:hidden">
                           <div className="flex items-center justify-between gap-2">
@@ -1466,7 +1459,7 @@ export default function App() {
                           </div>
                           {selectedLists.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 overflow-hidden">
-                              {selectedLists.slice(0, isSessionSettingsExpanded ? 6 : 3).map(list => (
+                              {selectedLists.slice(0, 6).map(list => (
                                 <button
                                   key={list.id}
                                   type="button"
@@ -1478,20 +1471,20 @@ export default function App() {
                                   <X className="h-3 w-3 shrink-0" />
                                 </button>
                               ))}
-                              {selectedLists.length > (isSessionSettingsExpanded ? 6 : 3) && (
+                              {selectedLists.length > 6 && (
                                 <button
                                   type="button"
                                   onClick={() => setIsCollectionSheetOpen(true)}
                                   className="min-h-8 cursor-pointer rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                                 >
-                                  +{selectedLists.length - (isSessionSettingsExpanded ? 6 : 3)} diğer
+                                  +{selectedLists.length - 6} diğer
                                 </button>
                               )}
                             </div>
                           )}
                         </div>
 
-                        <div className={`${isSessionSettingsExpanded ? 'space-y-1.5' : 'hidden'} sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0`}>
+                        <div className="space-y-1.5 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0">
                           <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2">
                             <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Sıralama</label>
                             <div className="grid grid-cols-2 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
@@ -1532,14 +1525,14 @@ export default function App() {
 
                           <div className="flex items-center gap-2 rounded-xl border border-slate-100 dark:border-slate-850 bg-slate-50/45 dark:bg-slate-950/20 p-1.5 sm:p-2">
                             <label className="w-20 shrink-0 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tür</label>
-                            <div className="grid grid-cols-2 gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-lg border border-slate-100 dark:border-slate-850 flex-1">
-                              <button type="button" onClick={() => setStudyType('card')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'card' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
-                                Kart
-                              </button>
-                              <button type="button" onClick={() => setStudyType('quiz')} className={`py-1.5 px-2 rounded-md text-xs font-extrabold transition-all cursor-pointer text-center ${studyType === 'quiz' ? 'bg-indigo-600 text-white shadow-3xs' : 'text-slate-600 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-350'}`}>
-                                Quiz
-                              </button>
-                            </div>
+                            <StudyModeSwitch
+                              value={studyType}
+                              onChange={setStudyType}
+                              options={[
+                                { value: 'card', label: 'Kart', icon: <BookOpen className="h-3.5 w-3.5" /> },
+                                { value: 'quiz', label: 'Quiz', icon: <HelpCircle className="h-3.5 w-3.5" /> },
+                              ]}
+                            />
                           </div>
 
                           {studyType === 'quiz' && (
@@ -1676,6 +1669,10 @@ export default function App() {
                         </div>
 
                       </div>
+                     </>
+                     ) : (
+                       <CommonCombinationsView view="study" onSessionActiveChange={setIsCombinationStudying} />
+                     )}
                   </motion.div>
                 )}
 
@@ -1702,30 +1699,23 @@ export default function App() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
+                    className="space-y-6"
                   >
-                    {/* Word management database panel */}
-                    <WordExplorer
-                      words={words}
-                      lists={lists}
-                      onUpdateWord={handleUpdateWord}
-                      onDeleteWord={handleDeleteWord}
-                      onDeleteList={handleDeleteList}
-                    />
+                    <ContentTypeSwitch value={libraryContentType} onChange={setLibraryContentType} />
+                    {libraryContentType === 'vocabulary' ? (
+                      <WordExplorer
+                        words={words}
+                        lists={lists}
+                        onUpdateWord={handleUpdateWord}
+                        onDeleteWord={handleDeleteWord}
+                        onDeleteList={handleDeleteList}
+                      />
+                    ) : (
+                      <CommonCombinationsView view="library" />
+                    )}
                   </motion.div>
                 )}
 
-                {activeTab === 'import' && (
-                  <motion.div
-                    key="tab-import"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {/* Dynamic Excel / CSV Import panel */}
-                    <CSVImporter onImport={handleImport} />
-                  </motion.div>
-                )}
               </AnimatePresence>
             </div>
       </main>
@@ -1871,7 +1861,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === 'study' && !isStudying && (
+      {activeTab === 'study' && studyContentType === 'vocabulary' && !isStudying && (
         <div
           className="fixed left-0 right-0 z-50 px-4 pointer-events-none md:hidden"
           style={{ bottom: 'calc(68px + env(safe-area-inset-bottom))' }}
@@ -1932,7 +1922,7 @@ export default function App() {
           }`}
         >
           <History className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight">Geçmiş</span>
+          <span className="text-[9px] tracking-tight">Geçmiş</span>
         </button>
 
         {/* Library Tab */}
@@ -1947,23 +1937,9 @@ export default function App() {
           }`}
         >
           <BookOpen className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight">Kütüphane</span>
+          <span className="text-[9px] tracking-tight">Kütüphane</span>
         </button>
 
-        {/* Import Tab */}
-        <button
-          onClick={() => {
-            handleTabChange('import');
-          }}
-          className={`flex min-w-0 flex-1 flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
-            !isStudying && activeTab === 'import'
-              ? 'text-indigo-600 dark:text-indigo-400 scale-105 font-bold'
-              : 'text-slate-450 dark:text-slate-500'
-          }`}
-        >
-          <Layers className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight">Yükle</span>
-        </button>
       </div>
     </div>
   );
