@@ -28,12 +28,63 @@ import { ensureBundledCommonCombinations } from '../seedData';
 const COLLECTIONS_KEY = 'lexicards_combination_collections';
 const ITEMS_KEY = 'lexicards_common_combinations';
 const STUDY_HISTORY_KEY = 'lexicards_study_history';
+const ACTIVE_COMBINATION_STUDY_KEY = 'lexicards_active_combination_study';
 
 type FamilyFilter = 'all' | CommonCombination['family'];
 type StudyMode = 'cards' | 'completion';
 type StatusFilter = 'all' | 'unlearned' | 'learned';
 type StudyOrder = 'sequential' | 'shuffled';
 type LibraryStatusFilter = 'all' | CommonCombination['status'];
+
+interface PersistedCombinationStudySession {
+  version: 1;
+  session: CommonCombination[];
+  currentIndex: number;
+  isFlipped: boolean;
+  choicesByItem: Record<string, string[]>;
+  answersByItem: Record<string, string>;
+  results: Record<string, boolean>;
+  startedAt: string;
+  selectedCollectionIds: string[];
+  familyFilter: FamilyFilter;
+  studyMode: StudyMode;
+  statusFilter: StatusFilter;
+  studyOrder: StudyOrder;
+  studySize: 10 | 20 | 30 | 'all';
+}
+
+const loadPersistedCombinationStudySession = (): PersistedCombinationStudySession | null => {
+  try {
+    const savedSession = localStorage.getItem(ACTIVE_COMBINATION_STUDY_KEY);
+    if (!savedSession) return null;
+    const parsedSession = JSON.parse(savedSession) as PersistedCombinationStudySession;
+    if (
+      parsedSession.version !== 1
+      || !Array.isArray(parsedSession.session)
+      || parsedSession.session.length === 0
+      || !Number.isInteger(parsedSession.currentIndex)
+      || parsedSession.currentIndex < 0
+      || parsedSession.currentIndex >= parsedSession.session.length
+      || !parsedSession.choicesByItem
+      || typeof parsedSession.choicesByItem !== 'object'
+      || !parsedSession.answersByItem
+      || typeof parsedSession.answersByItem !== 'object'
+      || !parsedSession.results
+      || typeof parsedSession.results !== 'object'
+      || !Array.isArray(parsedSession.choicesByItem[parsedSession.session[parsedSession.currentIndex].id])
+    ) {
+      localStorage.removeItem(ACTIVE_COMBINATION_STUDY_KEY);
+      return null;
+    }
+    return parsedSession;
+  } catch (error) {
+    console.error('Error loading active combination study session', error);
+    localStorage.removeItem(ACTIVE_COMBINATION_STUDY_KEY);
+    return null;
+  }
+};
+
+export const hasPersistedCombinationStudySession = () => loadPersistedCombinationStudySession() !== null;
 
 const FAMILY_LABELS: Record<CommonCombination['family'], string> = {
   verb: 'Verb + Prep',
@@ -89,31 +140,38 @@ interface CommonCombinationsViewProps {
 
 export default function CommonCombinationsView({ view = 'all', onSessionActiveChange }: CommonCombinationsViewProps) {
   const [initialBundledData] = useState(() => ensureBundledCommonCombinations());
+  const [restoredStudySession] = useState(loadPersistedCombinationStudySession);
   const [collections, setCollections] = useState<CombinationCollection[]>(initialBundledData.collections);
   const [items, setItems] = useState<CommonCombination[]>(initialBundledData.items);
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(() =>
-    initialBundledData.collections.map(collection => collection.id),
+    restoredStudySession?.selectedCollectionIds ?? initialBundledData.collections.map(collection => collection.id),
   );
-  const [familyFilter, setFamilyFilter] = useState<FamilyFilter>('all');
-  const [studyMode, setStudyMode] = useState<StudyMode>('completion');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [studyOrder, setStudyOrder] = useState<StudyOrder>('shuffled');
-  const [studySize, setStudySize] = useState<10 | 20 | 30 | 'all'>(20);
+  const [familyFilter, setFamilyFilter] = useState<FamilyFilter>(restoredStudySession?.familyFilter ?? 'all');
+  const [studyMode, setStudyMode] = useState<StudyMode>(restoredStudySession?.studyMode ?? 'completion');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(restoredStudySession?.statusFilter ?? 'all');
+  const [studyOrder, setStudyOrder] = useState<StudyOrder>(restoredStudySession?.studyOrder ?? 'shuffled');
+  const [studySize, setStudySize] = useState<10 | 20 | 30 | 'all'>(restoredStudySession?.studySize ?? 20);
   const [isPronunciationEnabled, setIsPronunciationEnabled] = useState(
     () => localStorage.getItem('lexicards_pronunciation_enabled') !== 'false',
   );
   const [query, setQuery] = useState('');
   const [libraryStatusFilter, setLibraryStatusFilter] = useState<LibraryStatusFilter>('all');
-  const [session, setSession] = useState<CommonCombination[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [choices, setChoices] = useState<string[]>([]);
-  const [choicesByItem, setChoicesByItem] = useState<Record<string, string[]>>({});
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [answersByItem, setAnswersByItem] = useState<Record<string, string>>({});
-  const [results, setResults] = useState<Record<string, boolean>>({});
+  const [session, setSession] = useState<CommonCombination[]>(restoredStudySession?.session ?? []);
+  const [currentIndex, setCurrentIndex] = useState(restoredStudySession?.currentIndex ?? 0);
+  const [isFlipped, setIsFlipped] = useState(restoredStudySession?.isFlipped ?? false);
+  const [choicesByItem, setChoicesByItem] = useState<Record<string, string[]>>(restoredStudySession?.choicesByItem ?? {});
+  const [choices, setChoices] = useState<string[]>(() => {
+    if (!restoredStudySession) return [];
+    return restoredStudySession.choicesByItem[restoredStudySession.session[restoredStudySession.currentIndex].id] ?? [];
+  });
+  const [answersByItem, setAnswersByItem] = useState<Record<string, string>>(restoredStudySession?.answersByItem ?? {});
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(() => {
+    if (!restoredStudySession) return null;
+    return restoredStudySession.answersByItem[restoredStudySession.session[restoredStudySession.currentIndex].id] ?? null;
+  });
+  const [results, setResults] = useState<Record<string, boolean>>(restoredStudySession?.results ?? {});
   const [isCompleted, setIsCompleted] = useState(false);
-  const sessionStartedAtRef = useRef(new Date().toISOString());
+  const sessionStartedAtRef = useRef(restoredStudySession?.startedAt ?? new Date().toISOString());
   const historyRecordedRef = useRef(false);
 
   useEffect(() => {
@@ -132,6 +190,63 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
     };
   }, [session.length]);
+
+  useEffect(() => {
+    if (session.length === 0 || isCompleted) {
+      localStorage.removeItem(ACTIVE_COMBINATION_STUDY_KEY);
+      return;
+    }
+
+    const activeSession: PersistedCombinationStudySession = {
+      version: 1,
+      session,
+      currentIndex,
+      isFlipped,
+      choicesByItem,
+      answersByItem,
+      results,
+      startedAt: sessionStartedAtRef.current,
+      selectedCollectionIds,
+      familyFilter,
+      studyMode,
+      statusFilter,
+      studyOrder,
+      studySize,
+    };
+
+    const persistSession = () => {
+      try {
+        localStorage.setItem(ACTIVE_COMBINATION_STUDY_KEY, JSON.stringify(activeSession));
+      } catch (error) {
+        console.error('Error saving active combination study session', error);
+      }
+    };
+    const persistWhenHidden = () => {
+      if (document.visibilityState === 'hidden') persistSession();
+    };
+
+    persistSession();
+    document.addEventListener('visibilitychange', persistWhenHidden);
+    window.addEventListener('pagehide', persistSession);
+    return () => {
+      document.removeEventListener('visibilitychange', persistWhenHidden);
+      window.removeEventListener('pagehide', persistSession);
+    };
+  }, [
+    answersByItem,
+    choicesByItem,
+    currentIndex,
+    familyFilter,
+    isCompleted,
+    isFlipped,
+    results,
+    selectedCollectionIds,
+    session,
+    statusFilter,
+    studyMode,
+    studyOrder,
+    studySize,
+  ]);
 
   const persist = (nextCollections: CombinationCollection[], nextItems: CommonCombination[]) => {
     setCollections(nextCollections);
@@ -379,7 +494,7 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
           </div>
         ) : (
           <>
-          <div className="grid shrink-0 grid-cols-3 divide-x divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white px-1 py-1 shadow-xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900 sm:px-2">
+          <div className="mt-5 grid shrink-0 grid-cols-3 divide-x divide-slate-100 overflow-hidden rounded-2xl border border-slate-100 bg-white px-1 py-1 shadow-xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900 sm:px-2">
             <div className="px-2 py-1 text-center">
               <p className="text-[8px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Doğru</p>
               <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 sm:text-base">{correctCount}<span className="text-[9px] opacity-60">/{session.length}</span></p>
@@ -427,20 +542,22 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
             }}
             initial={{ opacity: 0, x: 8 }}
             animate={{ opacity: 1, x: 0 }}
-            className="mb-1 mt-1 flex min-h-[260px] w-[calc(100%+0.5rem)] shrink-0 self-center touch-pan-x flex-col overflow-hidden rounded-[1.7rem] border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:min-h-[280px] sm:p-5"
-            style={{ touchAction: 'pan-x', height: 'clamp(260px, 38dvh, 320px)' }}
+            className="my-auto flex w-[calc(100%+0.5rem)] shrink-0 self-center touch-pan-y flex-col overflow-y-auto overscroll-contain rounded-[1.7rem] border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5"
+            style={{ touchAction: 'pan-y', height: 'clamp(340px, 60dvh, 470px)' }}
           >
             <div className="flex shrink-0 items-center justify-between gap-3">
-              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-violet-600 dark:bg-violet-950/40 dark:text-violet-400 sm:text-[10px]">YÖKDİL · Boşluk Tamamlama</span>
+              <span className="truncate text-[9px] font-bold uppercase tracking-wider text-slate-400 sm:text-[10px]">{FAMILY_LABELS[currentItem.family]}</span>
               <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">Kelime kartı</span>
             </div>
-            <div className="mt-2 shrink-0 truncate text-[9px] font-bold uppercase tracking-wider text-slate-400 sm:text-[10px]">{FAMILY_LABELS[currentItem.family]}</div>
 
-            <div className="flex flex-1 flex-col items-center justify-center py-3 text-center sm:py-4">
+            <div className="flex min-h-[150px] flex-1 flex-col items-center justify-center py-3 text-center sm:py-4">
               <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 sm:text-[10px]">Doğru eki seçerek tamamlayın</p>
               <h2 className="mt-2 line-clamp-2 max-w-full break-words font-mono text-[clamp(1.45rem,3.5vh,1.9rem)] font-black leading-relaxed text-slate-900 [overflow-wrap:anywhere] dark:text-white">
                 {selectedAnswer ? currentItem.expression : currentItem.clozePrompt}
               </h2>
+              <p className="mt-2 line-clamp-2 max-w-full rounded-xl bg-indigo-50/65 px-3 py-2 text-[11px] font-extrabold leading-snug text-indigo-800 dark:bg-indigo-950/25 dark:text-indigo-200 sm:text-xs">
+                {currentItem.meaning}
+              </p>
               {selectedAnswer && (
                 <button
                   type="button"
@@ -461,14 +578,7 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
               )}
             </div>
 
-            <div className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-indigo-100/70 bg-indigo-50/65 px-3 py-2 text-left dark:border-indigo-900/50 dark:bg-indigo-950/25">
-              <span className="shrink-0 rounded-md bg-indigo-600 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-white">TR</span>
-              <p className="line-clamp-2 min-w-0 text-[11px] font-extrabold leading-snug text-indigo-800 dark:text-indigo-200 sm:text-xs">{currentItem.meaning}</p>
-            </div>
-          </motion.div>
-
-          <div className="shrink-0 rounded-[1.6rem] border border-slate-100 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900 sm:p-4">
-            <p className="mb-3 px-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">Cevabınızı seçin</p>
+            <div className="mt-2 shrink-0 border-t border-slate-100 pt-2.5 dark:border-slate-800 sm:mt-3 sm:pt-3">
             <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {choices.map(choice => {
                 const isCorrectChoice = currentItem.acceptedAnswers.includes(choice);
@@ -487,9 +597,8 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
                 );
               })}
             </div>
-            <div className="mt-2 min-h-[52px] shrink-0 sm:mt-3 sm:min-h-[58px]">
-            {selectedAnswer ? (
-              <div className={`flex min-h-[52px] items-center justify-between gap-2 rounded-xl p-2 sm:min-h-[58px] sm:gap-3 sm:rounded-2xl sm:p-3 ${results[currentItem.id] ? 'bg-emerald-50 dark:bg-emerald-950/25' : 'bg-rose-50 dark:bg-rose-950/25'}`}>
+            {selectedAnswer && (
+              <div className={`mt-2 flex min-h-[52px] items-center justify-between gap-2 rounded-xl p-2 sm:mt-3 sm:min-h-[58px] sm:gap-3 sm:rounded-2xl sm:p-3 ${results[currentItem.id] ? 'bg-emerald-50 dark:bg-emerald-950/25' : 'bg-rose-50 dark:bg-rose-950/25'}`}>
                 <div className="flex min-w-0 items-center gap-2">
                   {results[currentItem.id] ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> : <XCircle className="h-5 w-5 shrink-0 text-rose-600" />}
                   <div className="min-w-0 text-left">
@@ -499,13 +608,9 @@ export default function CommonCombinationsView({ view = 'all', onSessionActiveCh
                 </div>
                 <button onClick={goToNext} className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900" aria-label={currentIndex < session.length - 1 ? 'Sonraki soru' : 'Çalışmayı bitir'}><ArrowRight className="h-5 w-5" /></button>
               </div>
-            ) : (
-              <div className="flex min-h-[52px] items-center justify-center px-3 text-center text-[10px] font-bold text-slate-400 sm:min-h-[58px] sm:text-[11px]">
-                Bir seçenek seçin · Türkçe anlam doğru eki bulmanıza yardımcı olur
-              </div>
             )}
             </div>
-          </div>
+          </motion.div>
           </>
         )}
           </div>

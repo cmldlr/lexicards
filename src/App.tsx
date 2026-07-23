@@ -8,7 +8,7 @@ import QuizView from './components/QuizView';
 import WordExplorer from './components/WordExplorer';
 import ListInspectorModal from './components/ListInspectorModal';
 import StudyHistoryView from './components/StudyHistoryView';
-import CommonCombinationsView from './components/CommonCombinationsView';
+import CommonCombinationsView, { hasPersistedCombinationStudySession } from './components/CommonCombinationsView';
 import StudyModeSwitch from './components/StudyModeSwitch';
 import { 
   BookOpen, 
@@ -124,6 +124,7 @@ const loadPersistedStudySession = (): PersistedStudySession | null => {
 
 export default function App() {
   const [restoredStudySession] = useState(loadPersistedStudySession);
+  const [hasRestoredCombinationStudy] = useState(hasPersistedCombinationStudySession);
   const [lists, setLists] = useState<WordList[]>([]);
   const [words, setWords] = useState<Word[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState(() => localStorage.getItem('lexicards_auth') === 'true');
@@ -144,7 +145,7 @@ export default function App() {
   
   // Tab state
   const [activeTab, setActiveTab] = useState<AppTab>(() => {
-    if (restoredStudySession) return 'study';
+    if (restoredStudySession || hasRestoredCombinationStudy) return 'study';
     const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
     return savedTab && ['collections', 'study', 'history', 'library'].includes(savedTab)
       ? savedTab as AppTab
@@ -161,8 +162,12 @@ export default function App() {
   const [collectionVisibility, setCollectionVisibility] = useState<'all' | 'selected' | 'unselected'>('all');
   const [collectionSort, setCollectionSort] = useState<'default' | 'name-asc' | 'name-desc' | 'count-desc' | 'count-asc'>('default');
   const [collectionsContentType, setCollectionsContentType] = useState<ContentType>('vocabulary');
-  const [studyContentType, setStudyContentType] = useState<ContentType>('vocabulary');
-  const [isCombinationStudying, setIsCombinationStudying] = useState(false);
+  const [studyContentType, setStudyContentType] = useState<ContentType>(
+    !restoredStudySession && hasRestoredCombinationStudy ? 'combinations' : 'vocabulary',
+  );
+  const [isCombinationStudying, setIsCombinationStudying] = useState(
+    !restoredStudySession && hasRestoredCombinationStudy,
+  );
   const [libraryContentType, setLibraryContentType] = useState<ContentType>('vocabulary');
   const [isCollectionSheetOpen, setIsCollectionSheetOpen] = useState(false);
   const [isMobileHeaderMenuOpen, setIsMobileHeaderMenuOpen] = useState(false);
@@ -668,10 +673,20 @@ export default function App() {
     return true;
   }).length;
 
-  const listWordCounts = words.reduce<Record<string, number>>((counts, word) => {
-    counts[word.listId] = (counts[word.listId] ?? 0) + 1;
-    return counts;
+  const listWordStats = words.reduce<Record<string, { total: number; learned: number; unlearned: number }>>((stats, word) => {
+    const current = stats[word.listId] ?? { total: 0, learned: 0, unlearned: 0 };
+    const isLearned = (word.status || (word.learned ? 'learned' : 'unmarked')) === 'learned';
+    stats[word.listId] = {
+      total: current.total + 1,
+      learned: current.learned + (isLearned ? 1 : 0),
+      unlearned: current.unlearned + (isLearned ? 0 : 1),
+    };
+    return stats;
   }, {});
+  const listWordCounts = Object.fromEntries(
+    (Object.entries(listWordStats) as Array<[string, { total: number; learned: number; unlearned: number }]>)
+      .map(([listId, stats]) => [listId, stats.total]),
+  ) as Record<string, number>;
   const normalizedCollectionQuery = collectionQuery.trim().toLocaleLowerCase('tr-TR');
   const filteredAndSortedLists = lists
     .filter(list => {
@@ -1282,8 +1297,8 @@ export default function App() {
                       ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                           {filteredAndSortedLists.map(list => {
-                            const wordCount = listWordCounts[list.id] ?? 0;
-                            const learnedCount = words.filter(w => w.listId === list.id && w.learned).length;
+                            const wordCount = listWordStats[list.id]?.total ?? 0;
+                            const learnedCount = listWordStats[list.id]?.learned ?? 0;
                             const struggledCount = words.filter(w => w.listId === list.id && (w.status === 'struggled')).length;
                             const isSelected = selectedListIds.includes(list.id);
                             const progressPercent = wordCount > 0 ? Math.round((learnedCount / wordCount) * 100) : 0;
@@ -1613,7 +1628,7 @@ export default function App() {
                           <div className="grid max-h-[196px] grid-cols-2 gap-1.5 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/50 p-1.5 scrollbar-thin dark:border-slate-850/60 dark:bg-slate-950/30 sm:max-h-[116px] sm:grid-cols-3 sm:gap-2 sm:p-2">
                             {filteredAndSortedLists.map(list => {
                               const isSelected = selectedListIds.includes(list.id);
-                              const listWordCount = listWordCounts[list.id] ?? 0;
+                              const listStats = listWordStats[list.id] ?? { total: 0, learned: 0, unlearned: 0 };
                               return (
                                 <button
                                   key={list.id}
@@ -1630,8 +1645,14 @@ export default function App() {
                                   }`}>
                                     {isSelected && <CheckCircle2 className="w-2.5 h-2.5 stroke-[3px]" />}
                                   </div>
-                                  <span className="truncate flex-1 text-left">{list.name}</span>
-                                  <span className="text-[10px] font-medium opacity-50 shrink-0">{listWordCount}</span>
+                                  <span className="min-w-0 flex-1 text-left">
+                                    <span className="block truncate">{list.name}</span>
+                                    <span className="mt-0.5 flex items-center gap-1.5 text-[9px] font-black">
+                                      <span className="text-emerald-600 dark:text-emerald-400">{listStats.learned} bilinen</span>
+                                      <span className="text-slate-300 dark:text-slate-700">·</span>
+                                      <span className="text-rose-600 dark:text-rose-400">{listStats.unlearned} bilinmeyen</span>
+                                    </span>
+                                  </span>
                                 </button>
                               );
                             })}
@@ -1824,6 +1845,7 @@ export default function App() {
             <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 overflow-y-auto overscroll-contain px-4 py-3">
               {filteredAndSortedLists.map(list => {
                 const isSelected = selectedListIds.includes(list.id);
+                const listStats = listWordStats[list.id] ?? { total: 0, learned: 0, unlearned: 0 };
                 return (
                   <button
                     key={list.id}
@@ -1838,8 +1860,14 @@ export default function App() {
                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 dark:border-slate-700'}`}>
                       {isSelected && <CheckCircle2 className="h-3 w-3" />}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{list.name}</span>
-                    <span className="shrink-0 text-[9px] opacity-50">{listWordCounts[list.id] ?? 0}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{list.name}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[9px] font-black">
+                        <span className="text-emerald-600 dark:text-emerald-400">{listStats.learned} bilinen</span>
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                        <span className="text-rose-600 dark:text-rose-400">{listStats.unlearned} bilinmeyen</span>
+                      </span>
+                    </span>
                   </button>
                 );
               })}
@@ -1879,6 +1907,7 @@ export default function App() {
       )}
 
       {/* Mobile Bottom Navigation Bar */}
+      {!isStudying && !isCombinationStudying && (
       <div className="fixed bottom-0 left-0 right-0 z-45 md:hidden bg-white/95 dark:bg-slate-950/95 border-t border-slate-200/50 dark:border-slate-850/80 backdrop-blur-md px-1 py-2 flex justify-around items-center shadow-[0_-4px_12px_rgba(0,0,0,0.03)] pb-safe">
         {/* Collection Tab */}
         <button
@@ -1941,6 +1970,7 @@ export default function App() {
         </button>
 
       </div>
+      )}
     </div>
   );
 }
